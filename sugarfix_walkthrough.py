@@ -1262,30 +1262,63 @@ if organized_pdb_dir.exists() and (organized_pdb_dir / "models").exists():
     print(f"\nColab alignment RMSD table: {organized_pdb_dir / 'colab_alignment_rmsd.csv'}")
     print(f"Aligned models: {organized_pdb_dir / 'aligned_models'}")
 
-    viewable = colab_rmsd_df.dropna(subset=["rmsd_ca"])
+    viewable = colab_rmsd_df.dropna(subset=["rmsd_ca"]).reset_index(drop=True)
     if not viewable.empty:
-        best_row = viewable.iloc[0]
-        best_model_path = Path(best_row["aligned_model"])
-
-        view = py3Dmol.view(width=900, height=650)
-        view.addModel(Path(protein_pdb_path).read_text(), "pdb")
-        view.setStyle({"model": 0}, {"cartoon": {"color": "lightgray"}})
-        # Best AF3 model: cartoon for protein, sticks for glycan residues.
-        best_model_text = best_model_path.read_text()
-        view.addModel(best_model_text, "pdb")
-        view.setStyle({"model": 1}, {"cartoon": {"color": "palegreen"}})
-        # Highlight any sugar residues (NAG stubs from AF3, plus full glycan
-        # trees if present) as magenta sticks so glycosylation sites pop.
         SUGAR_RESNS = [
             "NAG", "MAN", "BMA", "FUC", "GAL", "GLC",
             "SIA", "NDG", "FUL", "BGC", "XYS", "RIB",
         ]
-        view.setStyle(
-            {"model": 1, "resn": SUGAR_RESNS},
-            {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}},
+        # Identify the model-name column (varies by helper version).
+        name_col = next(
+            (c for c in ("model_name", "model", "condition", "aligned_model")
+             if c in viewable.columns),
+            viewable.columns[0],
         )
-        view.zoomTo()
-        view.show()
+        labels = viewable[name_col].astype(str).tolist()
+        # Default to a glycan-containing model if available.
+        default_idx = next(
+            (i for i, lbl in enumerate(labels) if "glycan" in lbl.lower()),
+            0,
+        )
+
+        def _show_model(selected_label):
+            row = viewable[viewable[name_col].astype(str) == selected_label].iloc[0]
+            model_path = Path(row["aligned_model"])
+            view = py3Dmol.view(width=900, height=650)
+            view.addModel(Path(protein_pdb_path).read_text(), "pdb")
+            view.setStyle({"model": 0}, {"cartoon": {"color": "lightgray"}})
+            view.addModel(model_path.read_text(), "pdb")
+            view.setStyle({"model": 1}, {"cartoon": {"color": "palegreen"}})
+            view.setStyle(
+                {"model": 1, "resn": SUGAR_RESNS},
+                {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}},
+            )
+            view.zoomTo()
+            view.show()
+
+        try:
+            import ipywidgets as widgets
+            from IPython.display import display
+            dropdown = widgets.Dropdown(
+                options=labels,
+                value=labels[default_idx],
+                description="Model:",
+                layout=widgets.Layout(width="500px"),
+            )
+            out = widgets.Output()
+
+            def _on_change(change):
+                if change["name"] == "value":
+                    out.clear_output(wait=True)
+                    with out:
+                        _show_model(change["new"])
+
+            dropdown.observe(_on_change)
+            display(dropdown, out)
+            with out:
+                _show_model(labels[default_idx])
+        except ImportError:
+            _show_model(labels[default_idx])
 else:
     print(f"Organized AF3 model directory not found: {organized_pdb_dir / 'models'}")
     print("Run Step 8 first, then re-run this cell.")
