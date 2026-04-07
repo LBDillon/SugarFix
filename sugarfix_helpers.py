@@ -839,6 +839,14 @@ def make_af3_server_json(
 ) -> List[dict]:
     sequences = []
     for chain_idx, sequence in enumerate(chain_sequences):
+        if "X" in sequence:
+            x_positions = [i + 1 for i, aa in enumerate(sequence) if aa == "X"]
+            print(
+                f"  Note: chain {chain_idx} has {len(x_positions)} unresolved "
+                f"residue(s) at position(s) {x_positions}; substituting 'G' "
+                f"so AF3 server accepts the sequence."
+            )
+            sequence = sequence.replace("X", "G")
         chain_payload = {"sequence": sequence, "count": 1}
         if glycan_positions and glycan_positions.get(chain_idx):
             chain_payload["glycans"] = sorted(
