@@ -248,6 +248,99 @@ def pdb_resnum_to_uniprot(
     return None
 
 
+def snap_to_nearest_sequon(
+    chain_seq: str,
+    mpnn_idx: int,
+    window: int = 50,
+) -> Optional[int]:
+    """Search for the closest N-X-S/T motif within +/- `window` of mpnn_idx.
+
+    Returns the MPNN 0-indexed position of the N, or None if no motif found.
+    Used to recover from UniProt<->PDB numbering drift.
+    """
+    # Permissive: allow X (unresolved residue) in the middle position. The
+    # strict find_sequons regex excludes X, but for UniProt-only recovery we
+    # want to catch sites where the middle residue is missing from the
+    # structure (e.g. PDB gap inside the sequon).
+    pattern = re.compile(r"N[^P][ST]")
+    best = None
+    best_dist = window + 1
+    lo = max(0, mpnn_idx - window)
+    hi = min(len(chain_seq), mpnn_idx + window + 3)
+    for m in pattern.finditer(chain_seq, lo, hi):
+        dist = abs(m.start() - mpnn_idx)
+        if dist < best_dist:
+            best_dist = dist
+            best = m.start()
+    return best
+
+
+def build_glyco_site(
+    chain: str,
+    mpnn_idx: int,
+    chain_seqs: Dict[str, str],
+    pdb_to_mpnn_by_chain: Dict[str, Dict[int, int]],
+    dbref_ranges: dict,
+    uniprot_evidence: Dict[int, str],
+    glycan_trees: dict,
+    source: str = "motif",
+) -> Optional["GlycoSite"]:
+    """Construct a GlycoSite for a given chain + MPNN 0-indexed position.
+
+    `source` is one of: "motif" (regex hit), "uniprot_only" (UniProt CARBOHYD
+    that the regex missed), or "user_specified" (manual entry).
+    """
+    chain_seq = chain_seqs.get(chain, "")
+    if mpnn_idx < 0 or mpnn_idx + 3 > len(chain_seq):
+        return None
+
+    triplet = chain_seq[mpnn_idx:mpnn_idx + 3]
+    pdb_to_mpnn = pdb_to_mpnn_by_chain.get(chain, {})
+    mpnn_to_pdb = {v: k for k, v in pdb_to_mpnn.items()}
+    pdb_resnum = mpnn_to_pdb.get(mpnn_idx)
+
+    tree = glycan_trees.get(f"{chain}:{pdb_resnum}") if pdb_resnum is not None else None
+    uniprot_position = pdb_resnum_to_uniprot(chain, pdb_resnum, dbref_ranges)
+    uniprot_tier = uniprot_evidence.get(uniprot_position) if uniprot_position is not None else None
+    expected_tier = infer_expected_tier(uniprot_tier, tree is not None)
+
+    # Tier assignment for this site
+    if uniprot_tier is not None:
+        evidence_tier = uniprot_tier
+    elif tree is not None:
+        evidence_tier = "pdb_evidence"
+    else:
+        evidence_tier = "motif_only"
+
+    reasons = []
+    if tree is not None:
+        reasons.append(f"resolved glycan tree ({tree.get('n_sugars', '?')} sugars)")
+    if uniprot_tier is not None:
+        reasons.append(f"UniProt {uniprot_tier} at position {uniprot_position}")
+    if source == "uniprot_only":
+        reasons.append("not detected as N-X-S/T motif in chain sequence")
+    elif source == "user_specified":
+        reasons.append("user-specified site")
+    if not reasons:
+        reasons.append("motif-only regex match")
+
+    return GlycoSite(
+        chain=chain,
+        position_0idx=mpnn_idx,
+        position_1idx=mpnn_idx + 1,
+        motif=triplet,
+        evidence_tier=evidence_tier,
+        pdb_resnum=pdb_resnum,
+        glycan_tree=tree,
+        default_policy=POLICY_DEFAULTS[evidence_tier],
+        evidence_reasons=reasons,
+        uniprot_position=uniprot_position,
+        uniprot_tier=uniprot_tier,
+        expected_tier=expected_tier,
+        evidence_ok=(expected_tier == evidence_tier),
+    )
+
+
 def infer_expected_tier(uniprot_tier: Optional[str], has_glycan_tree: bool) -> str:
     if uniprot_tier == "experimental":
         return "experimental"

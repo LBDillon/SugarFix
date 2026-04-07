@@ -237,6 +237,123 @@ def load_uniprot_evidence(candidates_csv, pdb_id):
     return evidence
 
 
+# ---------------------------------------------------------------------------
+# UniProt accession extraction + REST API fetch
+# ---------------------------------------------------------------------------
+
+def extract_uniprot_accessions(pdb_path):
+    """Extract UniProt accession(s) per chain from a PDB or mmCIF file.
+
+    Returns dict: chain_id -> uniprot_accession (e.g. {"A": "P08195"}).
+    For multi-segment chains, the first accession encountered is used.
+    """
+    pdb_path = Path(pdb_path)
+    accessions = {}
+
+    if pdb_path.suffix.lower() in {".cif", ".mmcif"}:
+        if not BIOPYTHON_AVAILABLE:
+            return {}
+        mmcif = MMCIF2Dict(str(pdb_path))
+        # _struct_ref provides ref_id -> accession; _struct_ref_seq joins ref_id to chain
+        ref_ids = _as_list(mmcif.get("_struct_ref.id"))
+        ref_accs = _as_list(mmcif.get("_struct_ref.pdbx_db_accession"))
+        ref_dbs = _as_list(mmcif.get("_struct_ref.db_name"))
+        id_to_acc = {}
+        for i, rid in enumerate(ref_ids):
+            db = ref_dbs[i] if i < len(ref_dbs) else ""
+            if db and db.upper() not in {"UNP", "UNIPROT", "UNIPROTKB", "SP", "TR"}:
+                continue
+            acc = ref_accs[i] if i < len(ref_accs) else None
+            if acc and acc not in {"?", "."}:
+                id_to_acc[rid] = acc
+
+        seq_ref_ids = _as_list(mmcif.get("_struct_ref_seq.ref_id"))
+        seq_chains = _as_list(mmcif.get("_struct_ref_seq.pdbx_strand_id"))
+        for i, rid in enumerate(seq_ref_ids):
+            chain = seq_chains[i] if i < len(seq_chains) else None
+            if not chain or chain in {"?", "."}:
+                continue
+            acc = id_to_acc.get(rid)
+            if not acc:
+                continue
+            for ch in str(chain).split(","):
+                ch = ch.strip()
+                if ch and ch not in accessions:
+                    accessions[ch] = acc
+        return accessions
+
+    # PDB format DBREF: dbAccession at columns 34-41 (1-indexed)
+    with open(pdb_path) as f:
+        for line in f:
+            if not line.startswith("DBREF "):
+                continue
+            try:
+                chain = line[12:13].strip()
+                db_name = line[26:32].strip()
+                if db_name not in ("UNP", "SWS", "SP", "TR"):
+                    continue
+                acc = line[33:41].strip()
+                if chain and acc and chain not in accessions:
+                    accessions[chain] = acc
+            except (ValueError, IndexError):
+                continue
+    return accessions
+
+
+def fetch_uniprot_glycosylation(accession, timeout=10):
+    """Fetch N-linked glycosylation sites from the UniProt REST API.
+
+    Returns dict: uniprot_position (int) -> evidence_tier (str).
+    Tier mapping:
+      ECO:0000269 -> experimental
+      ECO:0007744 -> pdb_evidence
+      ECO:0000305 -> curator_inferred
+      ECO:0000250 -> curator_inferred (by similarity)
+    """
+    import json as _json
+    from urllib.request import urlopen, Request
+    from urllib.error import URLError, HTTPError
+
+    if not accession:
+        return {}
+
+    url = f"https://rest.uniprot.org/uniprotkb/{accession}.json"
+    req = Request(url, headers={"Accept": "application/json"})
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+    except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+        print(f"  WARNING: could not fetch UniProt {accession}: {exc}")
+        return {}
+
+    evidence = {}
+    for feat in data.get("features", []):
+        if feat.get("type") != "Glycosylation":
+            continue
+        desc = feat.get("description", "") or ""
+        if not desc.startswith("N-linked"):
+            continue
+        loc = feat.get("location", {}) or {}
+        start = (loc.get("start") or {}).get("value")
+        if start is None:
+            continue
+        codes = {ev.get("evidenceCode") for ev in feat.get("evidences", []) or []}
+        if "ECO:0000269" in codes:
+            tier = "experimental"
+        elif "ECO:0007744" in codes:
+            tier = "pdb_evidence"
+        elif "ECO:0000305" in codes or "ECO:0000250" in codes:
+            tier = "curator_inferred"
+        else:
+            tier = "curator_inferred"
+        # Highest tier wins if duplicated
+        existing = evidence.get(int(start))
+        rank = {"experimental": 3, "pdb_evidence": 2, "curator_inferred": 1, "motif_only": 0}
+        if existing is None or rank[tier] > rank.get(existing, 0):
+            evidence[int(start)] = tier
+    return evidence
+
+
 def load_glycan_trees(glycan_trees_path):
     """Load glycan trees JSON.
 
