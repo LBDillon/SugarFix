@@ -1,0 +1,16 @@
+{
+  "overall_per_residue_recovery_mean": 47.848694942903755,
+  "overall_per_residue_recovery_std": 44.25902519951198,
+  "overall_triplet_recovery_mean": 11.877059308072488,
+  "overall_triplet_recovery_std": 26.413866493037105,
+  "sequon_triplet_recovery_mean": NaN,
+  "sequon_triplet_recovery_std": NaN,
+  "non_sequon_triplet_recovery_mean": 11.877059308072488,
+  "non_sequon_triplet_recovery_std": 26.413866493037105,
+  "mannwhitney_p_value": NaN,
+  "cohens_d": NaN,
+  "n_sequon_triplets": 0,
+  "n_non_sequon_triplets": 607,
+  "n_proteins": 10,
+  "total_residues": 613
+}

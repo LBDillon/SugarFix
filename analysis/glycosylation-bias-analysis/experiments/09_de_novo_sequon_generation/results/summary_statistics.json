@@ -1,0 +1,12 @@
+{
+  "total_proteins": 10,
+  "total_designs": 320,
+  "total_positions_scanned": 363968,
+  "observed_de_novo_sequons": 74,
+  "expected_de_novo_sequons": 1637.8560000000002,
+  "observed_over_expected_ratio": 0.045181017134595464,
+  "observed_rate_percent": 0.020331457710567963,
+  "expected_rate_percent": 0.45,
+  "rate_ratio": 0.04518101713459547,
+  "binomial_p_value": 0.0
+}

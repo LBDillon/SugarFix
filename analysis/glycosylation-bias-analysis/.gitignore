@@ -1,0 +1,25 @@
+# ProteinMPNN (cloned at runtime)
+ProteinMPNN/
+
+# Data (generated per-run)
+data/glyco_benchmark/raw/glycoproteins/*.pdb
+data/glyco_benchmark/raw/glycoproteins/*.cif
+data/glyco_benchmark/raw/controls/*.pdb
+data/glyco_benchmark/designs/
+data/glyco_benchmark/analysis/
+data/af3_results/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
