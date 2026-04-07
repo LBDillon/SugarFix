@@ -1227,3 +1227,50 @@ if AF3_RESULTS_DIR.exists() and any(AF3_RESULTS_DIR.iterdir()):
 else:
     print(f"AF3 results directory not found: {AF3_RESULTS_DIR}")
     print("Run Step 7 first or set AF3_RESULTS_DIR before running this cell.")
+
+# %% [markdown]
+# ## Step 9 — Align AF3 Models in Colab *(Optional)*
+#
+# PyMOL is still the best local interactive viewer, but Colab can do the
+# structural alignment directly in Python. This cell uses the organized AF3
+# models from Step 8, aligns them to the prepared reference protein, writes
+# aligned PDBs, saves a Colab RMSD table, and opens the best aligned model in
+# an inline `py3Dmol` viewer.
+
+# %%
+from pipeline.align_af3_structures import align_organized_af3_models
+
+try:
+    import py3Dmol
+except ImportError:
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "py3Dmol"], check=True)
+    import py3Dmol
+
+if "organized_pdb_dir" not in globals():
+    organized_pdb_dir = session.run_dir / "af3_organized" / session.pdb_id
+
+if organized_pdb_dir.exists() and (organized_pdb_dir / "models").exists():
+    colab_rmsd_df = align_organized_af3_models(
+        organized_pdb_dir=organized_pdb_dir,
+        reference_path=protein_pdb_path,
+        pdb_id=session.pdb_id,
+    )
+    display_df(colab_rmsd_df)
+    print(f"\nColab alignment RMSD table: {organized_pdb_dir / 'colab_alignment_rmsd.csv'}")
+    print(f"Aligned models: {organized_pdb_dir / 'aligned_models'}")
+
+    viewable = colab_rmsd_df.dropna(subset=["rmsd_ca"])
+    if not viewable.empty:
+        best_row = viewable.iloc[0]
+        best_model_path = Path(best_row["aligned_model"])
+
+        view = py3Dmol.view(width=900, height=650)
+        view.addModel(Path(protein_pdb_path).read_text(), "pdb")
+        view.setStyle({"model": 0}, {"cartoon": {"color": "lightgray"}})
+        view.addModel(best_model_path.read_text(), "pdb")
+        view.setStyle({"model": 1}, {"cartoon": {"color": "palegreen"}})
+        view.zoomTo()
+        view.show()
+else:
+    print(f"Organized AF3 model directory not found: {organized_pdb_dir / 'models'}")
+    print("Run Step 8 first, then re-run this cell.")

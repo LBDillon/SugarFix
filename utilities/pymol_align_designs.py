@@ -80,7 +80,9 @@ class _Logger:
     def save(self):
         if not self.log_path:
             return
-        base = self.log_path.rstrip(".txt").rstrip(".csv")
+        base, ext = os.path.splitext(self.log_path)
+        if ext.lower() not in {".txt", ".csv"}:
+            base = self.log_path
         txt_path = base + ".txt"
         csv_path = base + ".csv"
 

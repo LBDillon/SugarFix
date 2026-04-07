@@ -5,4 +5,5 @@ seaborn
 scipy
 biopython
 ipywidgets
+py3Dmol
 torch
