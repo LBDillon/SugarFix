@@ -31,7 +31,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ALIGN_SCRIPT = REPO_ROOT / "utilities" / "pymol_align_designs.py"
+ALIGN_SCRIPT_SRC = REPO_ROOT / "utilities" / "pymol_align_designs.py"
 
 CONDITION_COLORS = {
     "designer_selected": "palegreen",
@@ -86,35 +86,53 @@ def extract_confidences(folder: Path):
 
 def write_pymol_script(pdb_dir: Path, pdb_id: str, crystal_pdb: Path,
                        conditions: list[str]) -> Path:
-    models_dir = pdb_dir / "models"
-    log_path = pdb_dir / "rmsd_results"
+    """Write a self-contained PyMOL script using paths relative to pdb_dir.
+
+    Copies the crystal PDB and the align script next to the .pml so the whole
+    folder is portable (e.g. download from Colab and run on a local machine).
+    """
+    # Copy crystal PDB next to the .pml so paths stay portable.
+    local_crystal = pdb_dir / f"{pdb_id}_crystal.pdb"
+    shutil.copy2(crystal_pdb, local_crystal)
+
+    # Copy the align script next to the .pml.
+    local_align = pdb_dir / "pymol_align_designs.py"
+    if ALIGN_SCRIPT_SRC.exists():
+        shutil.copy2(ALIGN_SCRIPT_SRC, local_align)
+
     lines = [
         f"# PyMOL script for {pdb_id} AF3 validation (SugarFix)",
-        f"# Run in PyMOL: @{pdb_dir / 'load_in_pymol.pml'}",
+        f"# Run from this directory:  pymol load_in_pymol.pml",
+        "",
+        "# Make sure relative paths resolve next to this script.",
+        "import os",
+        "from pymol import cmd",
+        "cmd.cd(os.path.dirname(__script__))",
         "",
         "# --- Reference crystal structure ---",
-        f"load {crystal_pdb}, {pdb_id}",
+        f"load {local_crystal.name}, {pdb_id}",
         f"color gray80, {pdb_id}",
         f"show cartoon, {pdb_id}",
         "",
         "# --- AF3 models ---",
     ]
     for condition in sorted(conditions):
-        cif = models_dir / f"{pdb_id}_{condition}.cif"
+        cif = pdb_dir / "models" / f"{pdb_id}_{condition}.cif"
         if not cif.exists():
             continue
         obj = f"{pdb_id}_{condition}"
         color = CONDITION_COLORS.get(condition, "white")
+        rel = f"models/{cif.name}"
         lines += [
-            f"load {cif}, {obj}",
+            f"load {rel}, {obj}",
             f"color {color}, {obj}",
             f"show cartoon, {obj}",
         ]
     lines += [
         "",
         "# --- Per-chain alignment with RMSD logging ---",
-        f"run {ALIGN_SCRIPT}",
-        f"align_designs {pdb_id}, chain=each, log={log_path}",
+        f"run {local_align.name}",
+        f"align_designs {pdb_id}, chain=each, log=rmsd_results",
         "",
         "bg_color white",
         "set cartoon_fancy_helices, 1",
