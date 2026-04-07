@@ -182,7 +182,7 @@ if IN_COLAB:
 # %%
 session = DesignSession(
     pdb_id="2DH2",
-    run_label="interactive_designer",
+    run_label="",
     num_seqs=8,
     sampling_temp=0.1,
     seed=42,
@@ -206,6 +206,7 @@ if WIDGETS_AVAILABLE:
     _pdb_w = widgets.Text(value=session.pdb_id, description="PDB ID:",
                           layout=widgets.Layout(width="280px"))
     _label_w = widgets.Text(value=session.run_label, description="Run label:",
+                            placeholder="optional subfolder",
                             layout=widgets.Layout(width="380px"))
     _nseqs_w = widgets.IntSlider(value=session.num_seqs, min=1, max=64, step=1,
                                   description="Num seqs:")
@@ -217,7 +218,7 @@ if WIDGETS_AVAILABLE:
 
     def _sync_config(change=None):
         session.pdb_id = _pdb_w.value.strip().upper()
-        session.run_label = _label_w.value.strip() or "interactive_designer"
+        session.run_label = _label_w.value.strip()
         session.num_seqs = _nseqs_w.value
         session.sampling_temp = _temp_w.value
         session.seed = _seed_w.value
@@ -242,7 +243,7 @@ if WIDGETS_AVAILABLE:
     _sync_config()
 else:
     print(f"Protein:     {session.pdb_id}")
-    print(f"Run label:   {session.run_label}")
+    print(f"Run label:   {session.run_label or '(none)'}")
     print(f"Num seqs:    {session.num_seqs}")
     print(f"Temp:        {session.sampling_temp}")
     print(f"Seed:        {session.seed}")
@@ -263,7 +264,9 @@ if IN_COLAB:
     if SAVE_TO_DRIVE:
         from google.colab import drive
         drive.mount("/content/drive", force_remount=False)
-        _drive_out = Path("/content/drive/MyDrive/SugarFix_outputs") / session.pdb_id / session.run_label
+        _drive_out = Path("/content/drive/MyDrive/SugarFix_outputs") / session.pdb_id
+        if session.run_label:
+            _drive_out = _drive_out / session.run_label
         _drive_out.mkdir(parents=True, exist_ok=True)
         print(f"Google Drive output: {_drive_out}")
 
@@ -1267,8 +1270,20 @@ if organized_pdb_dir.exists() and (organized_pdb_dir / "models").exists():
         view = py3Dmol.view(width=900, height=650)
         view.addModel(Path(protein_pdb_path).read_text(), "pdb")
         view.setStyle({"model": 0}, {"cartoon": {"color": "lightgray"}})
-        view.addModel(best_model_path.read_text(), "pdb")
+        # Best AF3 model: cartoon for protein, sticks for glycan residues.
+        best_model_text = best_model_path.read_text()
+        view.addModel(best_model_text, "pdb")
         view.setStyle({"model": 1}, {"cartoon": {"color": "palegreen"}})
+        # Highlight any sugar residues (NAG stubs from AF3, plus full glycan
+        # trees if present) as magenta sticks so glycosylation sites pop.
+        SUGAR_RESNS = [
+            "NAG", "MAN", "BMA", "FUC", "GAL", "GLC",
+            "SIA", "NDG", "FUL", "BGC", "XYS", "RIB",
+        ]
+        view.setStyle(
+            {"model": 1, "resn": SUGAR_RESNS},
+            {"stick": {"colorscheme": "magentaCarbon", "radius": 0.25}},
+        )
         view.zoomTo()
         view.show()
 else:
