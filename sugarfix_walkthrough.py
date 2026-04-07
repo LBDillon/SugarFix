@@ -1195,3 +1195,35 @@ if AF3_RESULTS_DIR.exists() and any(AF3_RESULTS_DIR.iterdir()):
 else:
     print(f"AF3 results directory not found: {AF3_RESULTS_DIR}")
     print("Set AF3_RESULTS_DIR to your AF3 output folder and re-run this cell.")
+
+# %% [markdown]
+# ## Step 8 — Organize AF3 outputs for PyMOL RMSD analysis *(Optional)*
+#
+# Takes the same `AF3_RESULTS_DIR` as Step 7 and produces a clean per-protein
+# folder with:
+#
+# * `models/` — top-ranked `.cif` per condition (designer_selected, soft_filter, …)
+# * `confidences/` — all seed confidence JSONs
+# * `confidence.csv` — per-seed confidence table
+# * `load_in_pymol.pml` — opens the crystal structure + all AF3 models in PyMOL
+#   and runs per-chain alignment, writing `rmsd_results.txt` and `rmsd_results.csv`.
+#
+# Open the resulting `.pml` in PyMOL (`pymol load_in_pymol.pml`) to inspect global
+# and per-chain RMSD between the crystal and each AF3 design.
+
+# %%
+from pipeline.organize_af3_results import organize as organize_af3_for_pymol
+
+if AF3_RESULTS_DIR.exists() and any(AF3_RESULTS_DIR.iterdir()):
+    af3_organized_dir = session.run_dir / "af3_organized"
+    organized_pdb_dir = organize_af3_for_pymol(
+        download_dir=AF3_RESULTS_DIR,
+        output_dir=af3_organized_dir,
+        pdb_id=session.pdb_id,
+        crystal_pdb=protein_pdb_path,
+    )
+    pml_path = organized_pdb_dir / "load_in_pymol.pml"
+    print(f"\nOpen in PyMOL:\n  pymol {pml_path}")
+else:
+    print(f"AF3 results directory not found: {AF3_RESULTS_DIR}")
+    print("Run Step 7 first or set AF3_RESULTS_DIR before running this cell.")
