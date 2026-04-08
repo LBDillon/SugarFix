@@ -1125,6 +1125,21 @@ site_summary_df.to_csv(site_summary_path, index=False)
 condition_summary_df.to_csv(condition_summary_path, index=False)
 top_designs_df.to_csv(top_designs_path, index=False)
 
+# %% [markdown]
+# ## Poster figures
+#
+# Generate the scaling poster visuals (per-site retention, design×site
+# heatmap, central-residue logo, substitution stack). SugarFix panels are
+# automatically dropped when retention is 100% (uninformative).
+
+# %%
+from pipeline import figures as poster_figures
+
+poster_dir = session.figure_dir / "poster"
+poster_paths = poster_figures.make_all(retention_path, poster_dir, palette="C")
+for name, p in poster_paths.items():
+    print(f"  {name}: {p}")
+
 constraint_payload = {}
 for condition_name, bundle in constraints_by_condition.items():
     constraint_payload[condition_name] = {
