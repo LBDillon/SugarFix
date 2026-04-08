@@ -230,7 +230,12 @@ if WIDGETS_AVAILABLE:
     def _sync_config(change=None):
         global ALPHAFOLD_UNIPROT
         session.pdb_id = _pdb_w.value.strip().upper()
-        ALPHAFOLD_UNIPROT = _af_w.value.strip().upper()
+        _af_val = _af_w.value.strip().upper()
+        if _af_val.startswith("AF-"):
+            _af_val = _af_val[3:]
+        if _af_val.endswith("-F1"):
+            _af_val = _af_val[:-3]
+        ALPHAFOLD_UNIPROT = _af_val
         session.run_label = _label_w.value.strip()
         session.num_seqs = _nseqs_w.value
         session.sampling_temp = _temp_w.value
@@ -304,11 +309,14 @@ USING_ALPHAFOLD = bool(ALPHAFOLD_UNIPROT)
 ALPHAFOLD_FORCED_ACCESSIONS = {}
 
 if USING_ALPHAFOLD:
-    import urllib.request
-    af_url = (f"https://alphafold.ebi.ac.uk/files/"
-              f"AF-{ALPHAFOLD_UNIPROT}-F1-model_v4.pdb")
-    print(f"Fetching AlphaFold model: {af_url}")
+    import urllib.request, json as _json
+    api_url = f"https://alphafold.ebi.ac.uk/api/prediction/{ALPHAFOLD_UNIPROT}"
+    print(f"Querying AlphaFold API: {api_url}")
     try:
+        with urllib.request.urlopen(api_url) as r:
+            meta = _json.loads(r.read())
+        af_url = meta[0]["pdbUrl"]
+        print(f"Fetching AlphaFold model: {af_url}")
         urllib.request.urlretrieve(af_url, str(pdb_path))
     except Exception as exc:
         raise FileNotFoundError(
