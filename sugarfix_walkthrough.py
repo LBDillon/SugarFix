@@ -39,10 +39,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-# ---------- Detect environment ----------
-IN_COLAB = "google.colab" in sys.modules
-REPO_ROOT = Path.cwd()  # assumes notebook is opened from the sugarfix/ folder
-
 
 try:
     from IPython.display import display
@@ -53,32 +49,22 @@ except Exception:
         else:
             print(obj)
 
+# ---------- Detect environment, install deps if on Colab ----------
 IN_COLAB = "google.colab" in sys.modules
-
 if IN_COLAB:
     REPO_ROOT = Path("/content/SugarFix")
     if not REPO_ROOT.exists():
         subprocess.run(
-            ["git", "clone", "--depth", "1", "https://github.com/LBDillon/SugarFix.git", str(REPO_ROOT)],
+            ["git", "clone", "--depth", "1",
+             "https://github.com/LBDillon/SugarFix.git", str(REPO_ROOT)],
             check=True,
         )
     os.chdir(REPO_ROOT)
     subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-q", "-r", str(REPO_ROOT / "requirements.txt")],
+        [sys.executable, "-m", "pip", "install", "-q",
+         "-r", str(REPO_ROOT / "requirements.txt")],
         check=True,
     )
-    try:
-        from google.colab import output as colab_output
-        colab_output.enable_custom_widget_manager()
-    except Exception:
-        pass
-else:
-    REPO_ROOT = Path.cwd()
-
-# ---------- Colab: install deps + enable widgets ----------
-if IN_COLAB:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                    "biopython", "ipywidgets", "seaborn"], check=True)
     # mkdssp powers the secondary-structure / SASA overlay in Step 4.
     subprocess.run(["apt-get", "install", "-y", "-q", "dssp"], check=False)
     try:
@@ -86,6 +72,8 @@ if IN_COLAB:
         colab_output.enable_custom_widget_manager()
     except Exception:
         pass
+else:
+    REPO_ROOT = Path.cwd()
 
 # ---------- ProteinMPNN: find or auto-clone ----------
 PMPNN_DIR = None

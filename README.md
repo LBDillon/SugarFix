@@ -7,24 +7,29 @@ ProteinMPNN systematically mutates away N-linked glycosylation sites: across 84 
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/sugarfix.git
-cd sugarfix
+git clone https://github.com/LBDillon/SugarFix.git
+cd SugarFix
 bash setup.sh        # installs deps + clones ProteinMPNN
-jupyter lab sugarfix_walkthrough.ipynb
+jupyter lab sugarfix_notebook.ipynb
 ```
 
-Or on Google Colab: upload the repo, open the notebook, and run cells top to bottom. The first cell auto-installs dependencies and clones ProteinMPNN. 
+Or on Google Colab: open `sugarfix_notebook.ipynb` and run cells top to bottom. The first cell auto-clones the repo, installs dependencies, ProteinMPNN, and `mkdssp`.
+
+## Input options
+
+- **PDB ID** — enter in the config widget; structure is fetched from RCSB.
+- **AlphaFold model** — leave the PDB ID as a label and put a UniProt accession (e.g. `P08195`) in the *AF UniProt* widget. The notebook fetches the current AlphaFold DB model via the EBI API and uses the accession directly to seed UniProt glycosylation evidence (AF models have no DBREF block).
 
 ## What the notebook does
 
-1. **Configure** your target PDB and design parameters
-2. **Prepare** the structure (download, extract protein-only PDB, find glycan trees)
+1. **Configure** target structure (PDB or AlphaFold) and design parameters
+2. **Prepare** the structure (download/fetch, extract protein-only PDB, find glycan trees)
 3. **Detect** N-X-S/T sequons and assign evidence tiers (experimental, PDB, curator, motif-only)
 4. **Choose** a preservation strategy per site (full sequon, functional preserve, soft filter, ignore)
 5. **Run ProteinMPNN** with your constraints + an unconstrained baseline for comparison
-6. **Score** designs and visualise retention in a dashboard
+6. **Score** designs, visualise retention dashboard, and generate poster figures
 7. **Export** AF3 Server JSONs (plain + with glycan stubs)
-8. *(Optional)* **Predict** AF3 predictions after running them externally
+8. *(Optional)* **Analyse** AF3 predictions after running them externally
 
 ## Preservation strategies
 
@@ -47,15 +52,18 @@ Or on Google Colab: upload the repo, open the notebook, and run cells top to bot
 
 ```
 sugarfix/
-  sugarfix_walkthrough.ipynb    # notebook
-  sugarfix_helpers.py           # Dataclasses, plotting, scoring
+  sugarfix_notebook.ipynb       # main notebook (paired with .py via jupytext)
+  sugarfix_walkthrough.py       # source of truth for the notebook
+  sugarfix_helpers.py           # Dataclasses, in-notebook plotting, scoring
   pipeline/
     prepare_structure.py        # PDB download and parsing
     identify_sequons.py         # Sequon detection + evidence tiers
     extract_pdb_glycans.py      # Glycan tree extraction from LINK records
     mpnn_utils.py               # ProteinMPNN utilities
     generate_af3_jsons.py       # AF3 Server JSON format
+    organize_af3_results.py     # Organise AF3 download folders
     validate_af3_results.py     # Post-AF3 confidence metric analysis
+    figures.py                  # Scaling poster figures (palettes A/B/C)
   requirements.txt
   setup.sh
   EXPLAINED.md                  # explaination
