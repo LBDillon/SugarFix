@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+ProteinMPNN/
+data/
+figures/
+_run.ipynb
+.DS_Store

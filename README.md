@@ -64,10 +64,12 @@ sugarfix/
 
 ## Output structure
 
-All outputs go under `data/outputs/output_{PDB_ID}/{run_label}/`:
+By default, each protein gets one output folder under `data/outputs/{PDB_ID}/`.
+If you enter an optional run label in the notebook, outputs go under
+`data/outputs/{PDB_ID}/{run_label}/` instead.
 
 ```
-data/outputs/output_1ZXQ/interactive_designer/
+data/outputs/1ZXQ/
   1ZXQ_site_inventory.csv
   1ZXQ_evidence_audit.csv
   1ZXQ_site_decisions.csv

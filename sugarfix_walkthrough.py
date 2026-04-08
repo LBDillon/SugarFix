@@ -79,6 +79,8 @@ else:
 if IN_COLAB:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q",
                     "biopython", "ipywidgets", "seaborn"], check=True)
+    # mkdssp powers the secondary-structure / SASA overlay in Step 4.
+    subprocess.run(["apt-get", "install", "-y", "-q", "dssp"], check=False)
     try:
         from google.colab import output as colab_output
         colab_output.enable_custom_widget_manager()
@@ -183,12 +185,18 @@ if IN_COLAB:
 session = DesignSession(
     pdb_id="2DH2",
     run_label="",
-    num_seqs=8,
+    num_seqs=64,
     sampling_temp=0.1,
     seed=42,
     pipeline_root=REPO_ROOT,
 )
 session.setup_paths()
+
+# Optional: AlphaFold DB input. If non-empty, the notebook fetches
+# AF-{accession}-F1-model_v4.pdb from https://alphafold.ebi.ac.uk and uses
+# that as the design target. The accession also seeds the UniProt evidence
+# lookup directly (AF models have no DBREF block).
+ALPHAFOLD_UNIPROT = ""
 
 # ---------- Optional: Google Drive output ----------
 SAVE_TO_DRIVE = False
@@ -205,6 +213,9 @@ if not CANDIDATES_CSV.exists():
 if WIDGETS_AVAILABLE:
     _pdb_w = widgets.Text(value=session.pdb_id, description="PDB ID:",
                           layout=widgets.Layout(width="280px"))
+    _af_w = widgets.Text(value="", description="AF UniProt:",
+                         placeholder="optional, e.g. P08195",
+                         layout=widgets.Layout(width="320px"))
     _label_w = widgets.Text(value=session.run_label, description="Run label:",
                             placeholder="optional subfolder",
                             layout=widgets.Layout(width="380px"))
@@ -217,7 +228,9 @@ if WIDGETS_AVAILABLE:
     _config_status = widgets.HTML()
 
     def _sync_config(change=None):
+        global ALPHAFOLD_UNIPROT
         session.pdb_id = _pdb_w.value.strip().upper()
+        ALPHAFOLD_UNIPROT = _af_w.value.strip().upper()
         session.run_label = _label_w.value.strip()
         session.num_seqs = _nseqs_w.value
         session.sampling_temp = _temp_w.value
@@ -228,12 +241,12 @@ if WIDGETS_AVAILABLE:
             f"Output dir: <code>{session.run_dir}</code></div>"
         )
 
-    for w in [_pdb_w, _label_w, _nseqs_w, _temp_w, _seed_w]:
+    for w in [_pdb_w, _af_w, _label_w, _nseqs_w, _temp_w, _seed_w]:
         w.observe(_sync_config, names="value")
 
     _box_children = [
         widgets.HTML("<h4 style='margin:0;'>Design parameters</h4>"),
-        widgets.HBox([_pdb_w, _label_w]),
+        widgets.HBox([_pdb_w, _af_w, _label_w]),
         widgets.HBox([_nseqs_w, _temp_w, _seed_w]),
         _config_status,
     ]
@@ -264,11 +277,22 @@ if IN_COLAB:
     if SAVE_TO_DRIVE:
         from google.colab import drive
         drive.mount("/content/drive", force_remount=False)
-        _drive_out = Path("/content/drive/MyDrive/SugarFix_outputs") / session.pdb_id
-        if session.run_label:
-            _drive_out = _drive_out / session.run_label
-        _drive_out.mkdir(parents=True, exist_ok=True)
-        print(f"Google Drive output: {_drive_out}")
+        # Redirect ALL outputs to Drive directly so nothing lands in the
+        # cloned repo folder during the run.
+        session.data_dir = Path("/content/drive/MyDrive/SugarFix_outputs")
+        session.structure_dir = session.data_dir / "prep" / session.pdb_id / "structure"
+        session.output_root = session.data_dir / "outputs" / session.pdb_id
+        session.run_dir = (
+            session.output_root / session.run_label
+            if session.run_label else session.output_root
+        )
+        session.figure_dir = session.run_dir / "figures"
+        session.af3_dir = session.run_dir / "af3"
+        for _d in (session.structure_dir, session.run_dir,
+                   session.figure_dir, session.af3_dir):
+            _d.mkdir(parents=True, exist_ok=True)
+        _drive_out = session.run_dir
+        print(f"Google Drive output (live): {_drive_out}")
 
 session.structure_dir.mkdir(parents=True, exist_ok=True)
 
@@ -276,7 +300,26 @@ pdb_path = session.structure_dir / f"{session.pdb_id}.pdb"
 protein_pdb_path = session.structure_dir / f"{session.pdb_id}_protein.pdb"
 annotation_structure_path = pdb_path
 
-if not pdb_path.exists():
+USING_ALPHAFOLD = bool(ALPHAFOLD_UNIPROT)
+ALPHAFOLD_FORCED_ACCESSIONS = {}
+
+if USING_ALPHAFOLD:
+    import urllib.request
+    af_url = (f"https://alphafold.ebi.ac.uk/files/"
+              f"AF-{ALPHAFOLD_UNIPROT}-F1-model_v4.pdb")
+    print(f"Fetching AlphaFold model: {af_url}")
+    try:
+        urllib.request.urlretrieve(af_url, str(pdb_path))
+    except Exception as exc:
+        raise FileNotFoundError(
+            f"Could not fetch AlphaFold model for {ALPHAFOLD_UNIPROT}: {exc}"
+        )
+    print(f"Saved AF model to: {pdb_path.name}")
+    # AF models have no DBREF block. Inject the accession so the UniProt
+    # cross-check still runs (Step 2 will pick this up as
+    # `chain_accessions`).
+    ALPHAFOLD_FORCED_ACCESSIONS = {"A": ALPHAFOLD_UNIPROT}
+elif not pdb_path.exists():
     print(f"Downloading {session.pdb_id} from RCSB...")
     download_ok = download_pdb(session.pdb_id, pdb_path)
     if not download_ok or not pdb_path.exists():
@@ -353,6 +396,9 @@ dbref_ranges = parse_pdb_dbref(annotation_structure_path)
 
 # Auto-fetch UniProt glycosylation features for each chain's accession
 chain_accessions = extract_uniprot_accessions(annotation_structure_path)
+if not chain_accessions and ALPHAFOLD_FORCED_ACCESSIONS:
+    chain_accessions = dict(ALPHAFOLD_FORCED_ACCESSIONS)
+    print(f"  Using forced AlphaFold accession(s): {chain_accessions}")
 fetched_evidence_by_chain = {}
 if chain_accessions:
     print(f"\nFetching UniProt glycosylation features:")
@@ -795,6 +841,7 @@ plot_site_strategy_overview(
     session.chain_seqs,
     session.assessment,
     output_path=site_strategy_figure,
+    pdb_path=protein_pdb_path,
 )
 
 # %% [markdown]
@@ -1101,9 +1148,9 @@ with open(session_path, "w") as handle:
 
 # Copy to Google Drive if opted in
 if IN_COLAB and SAVE_TO_DRIVE:
-    import shutil as _sh
-    _sh.copytree(str(session.run_dir), str(_drive_out), dirs_exist_ok=True)
-    print(f"Outputs copied to Google Drive: {_drive_out}")
+    # Outputs already wrote directly to Drive (session paths were rebased
+    # in Step 1). Nothing to copy.
+    print(f"Outputs were saved live to Google Drive: {session.run_dir}")
 
 # Final summary
 mismatches = evidence_audit_df.loc[~evidence_audit_df["tier_ok"]]

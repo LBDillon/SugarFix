@@ -9,7 +9,7 @@ Recognises SugarFix's AF3 folder naming convention:
 Usage:
     python -m pipeline.organize_af3_results /path/to/folds_download \
         --pdb-id 2DH2 --crystal-pdb data/structures/2DH2.pdb \
-        --output-dir data/outputs/output_2DH2/interactive_designer/af3_organized
+        --output-dir data/outputs/2DH2/af3_organized
 
 Output structure:
     af3_organized/

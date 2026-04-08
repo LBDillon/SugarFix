@@ -41,11 +41,12 @@ EVIDENCE_LABELS = {
     "curator_inferred": "Curator inferred",
     "motif_only": "Motif only",
 }
+# Palette C — "Okabe-Ito soft" — desaturated, colorblind-safe.
 EVIDENCE_COLORS = {
-    "experimental": "#0b6e4f",
-    "pdb_evidence": "#2a9d8f",
-    "curator_inferred": "#e9c46a",
-    "motif_only": "#bdbdbd",
+    "experimental":     "#5A9E8C",  # sage green
+    "pdb_evidence":     "#7BB6A6",  # lighter sage
+    "curator_inferred": "#C9A14A",  # warm gold
+    "motif_only":       "#B8B8B8",  # neutral gray
 }
 
 POLICY_ORDER = ["full_sequon", "functional_preserve", "soft_filter", "ignore"]
@@ -56,21 +57,19 @@ POLICY_LABELS = {
     "ignore": "Ignore",
 }
 POLICY_COLORS = {
-    "full_sequon": "#264653",
-    "functional_preserve": "#287271",
-    "soft_filter": "#f4a261",
-    "ignore": "#bdbdbd",
+    "full_sequon":         "#444444",  # accent dark
+    "functional_preserve": "#5A9E8C",
+    "soft_filter":         "#D88766",
+    "ignore":              "#B8B8B8",
 }
 
-# Only designer_selected + soft_filter baseline (constrained baselines removed
-# because they always show 100% retention by construction).
 CONDITION_LABELS = {
-    "designer_selected": "Your plan",
-    "soft_filter": "Baseline: no constraints",
+    "designer_selected": "SugarFix (evidence-aware)",
+    "soft_filter": "ProteinMPNN baseline",
 }
 CONDITION_COLORS = {
-    "designer_selected": "#005f73",
-    "soft_filter": "#bb3e03",
+    "designer_selected": "#5A9E8C",
+    "soft_filter":       "#D88766",
 }
 
 POLICY_DEFAULTS = {
@@ -142,7 +141,7 @@ class DesignSession:
     """Single mutable object that carries state between notebook cells."""
 
     pdb_id: str = ""
-    run_label: str = "interactive_designer"
+    run_label: str = ""
     num_seqs: int = 8
     sampling_temp: float = 0.1
     seed: int = 42
@@ -175,8 +174,8 @@ class DesignSession:
         root = self.pipeline_root
         self.data_dir = root / "data"
         self.structure_dir = self.data_dir / "prep" / self.pdb_id / "structure"
-        self.output_root = self.data_dir / "outputs" / f"output_{self.pdb_id}"
-        self.run_dir = self.output_root / self.run_label
+        self.output_root = self.data_dir / "outputs" / self.pdb_id
+        self.run_dir = self.output_root / self.run_label if self.run_label else self.output_root
         self.figure_dir = self.run_dir / "figures"
         self.af3_dir = self.run_dir / "af3"
 
@@ -595,116 +594,217 @@ def select_top_design(results: List[DesignResult]) -> Optional[DesignResult]:
 # Plotting
 # ---------------------------------------------------------------------------
 
+def _compute_dssp_per_chain(pdb_path: Path):
+    """Return {chain_id: {seq_index_1based: (ss_letter, rel_sasa)}}.
+
+    Tries Bio.PDB.DSSP first (needs the `mkdssp`/`dssp` binary). On failure
+    returns {} so callers can render the plot without the SS/SASA overlay.
+    """
+    if pdb_path is None or not Path(pdb_path).exists():
+        return {}
+    try:
+        from Bio.PDB import PDBParser
+        from Bio.PDB.DSSP import DSSP
+    except Exception:
+        return {}
+    try:
+        parser = PDBParser(QUIET=True)
+        structure = parser.get_structure("x", str(pdb_path))
+        model = next(structure.get_models())
+        dssp = DSSP(model, str(pdb_path), dssp="mkdssp")
+    except Exception:
+        try:
+            dssp = DSSP(model, str(pdb_path), dssp="dssp")
+        except Exception:
+            return {}
+    out: Dict[str, Dict[int, tuple]] = {}
+    for key in dssp.keys():
+        chain_id, res_id = key
+        record = dssp[key]
+        ss = record[2] if len(record) > 2 else "-"
+        sasa = record[3] if len(record) > 3 else None
+        try:
+            sasa_val = float(sasa) if sasa is not None else None
+        except (TypeError, ValueError):
+            sasa_val = None
+        # res_id is (' ', resnum, icode); we key by resnum.
+        resnum = res_id[1]
+        out.setdefault(chain_id, {})[int(resnum)] = (ss, sasa_val)
+    return out
+
+
+def _ss_to_color(ss: str) -> str:
+    if ss in ("H", "G", "I"):
+        return "#5A9E8C"  # helix - sage
+    if ss in ("E", "B"):
+        return "#C9A14A"  # strand - gold
+    return "#D0D0D0"      # loop / coil
+
+
 def plot_site_strategy_overview(
     decision_df: pd.DataFrame,
     chain_seqs: Dict[str, str],
     assessment: dict,
     output_path: Optional[Path] = None,
+    pdb_path: Optional[Path] = None,
 ) -> None:
+    """Per-chain sequence track with SS / SASA overlay and sequon callouts.
+
+    Chains with no detected sequons are still shown as muted "no sequons" rows
+    so the user has a complete chain inventory.
+    """
     if decision_df.empty:
         print("No glycosites found, so there is no site strategy plot to draw.")
         return
 
     ordered_df = decision_df.sort_values(["chain", "pos_1idx"]).reset_index(drop=True)
     chains = list(chain_seqs)
+    if not chains:
+        chains = list(ordered_df["chain"].unique())
 
-    fig = plt.figure(figsize=(15, max(5, 1.0 * len(ordered_df) + 2)))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.45, 1.0])
-    ax_track = fig.add_subplot(gs[0, 0])
-    ax_matrix = fig.add_subplot(gs[0, 1])
+    dssp_data = _compute_dssp_per_chain(Path(pdb_path)) if pdb_path else {}
+    has_dssp = bool(dssp_data)
 
-    for idx, chain_id in enumerate(chains):
-        y = len(chains) - idx
-        chain_len = len(chain_seqs[chain_id])
-        ax_track.hlines(y, 1, chain_len, color="#d9d9d9", linewidth=6)
-        ax_track.text(0, y, f"Chain {chain_id}", ha="right", va="center", fontsize=10)
+    plt.rcParams.update({
+        "axes.edgecolor": "#444444",
+        "axes.labelcolor": "#444444",
+        "xtick.color": "#444444",
+        "ytick.color": "#444444",
+        "text.color": "#444444",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+    })
 
-        sub = ordered_df[ordered_df["chain"] == chain_id]
-        for _, row in sub.iterrows():
-            ax_track.scatter(
-                row["pos_1idx"],
-                y,
-                s=180 if row["has_glycan_tree"] else 120,
-                c=EVIDENCE_COLORS[row["evidence_tier"]],
-                edgecolors=POLICY_COLORS[row["selected_policy"]],
-                linewidths=2.5,
-                zorder=3,
-            )
-            ax_track.text(
-                row["pos_1idx"],
-                y + 0.16,
-                row["site_label"],
-                fontsize=8,
-                rotation=45,
-                ha="left",
-                va="bottom",
-            )
+    n_chains = len(chains)
+    # Each chain gets ~1.6 inches of vertical space (track + label callouts).
+    fig_h = max(3.0, 1.6 * n_chains + 1.6)
+    fig_w = 14
+    fig = plt.figure(figsize=(fig_w, fig_h), facecolor="#FAFAFA")
+    gs = fig.add_gridspec(n_chains, 1, hspace=0.9)
 
-    ax_track.set_title("Where the sequons are on the target")
-    ax_track.set_xlabel("Residue index within chain")
-    ax_track.set_yticks([])
-    ax_track.set_ylim(0.4, len(chains) + 0.8)
-    ax_track.spines[["left", "right", "top"]].set_visible(False)
+    pos_to_resnum = {}  # chain -> {pos_1idx (mpnn) -> pdb resnum}
+    for _, r in ordered_df.iterrows():
+        if pd.notna(r.get("pdb_resnum")):
+            pos_to_resnum.setdefault(r["chain"], {})[int(r["pos_1idx"])] = int(r["pdb_resnum"])
 
-    evidence_handles = [
-        Line2D(
-            [0], [0], marker="o", linestyle="", markersize=9,
-            markerfacecolor=EVIDENCE_COLORS[key], markeredgecolor="black",
-            label=EVIDENCE_LABELS[key],
+    sasa_max = 1.0
+    if has_dssp:
+        all_sasa = [v[1] for d in dssp_data.values() for v in d.values()
+                    if v[1] is not None]
+        if all_sasa:
+            sasa_max = max(0.4, min(1.0, max(all_sasa)))
+
+    cmap = plt.cm.get_cmap("YlGnBu_r")  # buried -> exposed
+    sites_in_chain = {c: ordered_df[ordered_df["chain"] == c] for c in chains}
+
+    for row_idx, chain_id in enumerate(chains):
+        ax = fig.add_subplot(gs[row_idx, 0])
+        chain_len = len(chain_seqs.get(chain_id, "")) or (
+            int(ordered_df[ordered_df["chain"] == chain_id]["pos_1idx"].max()) + 5
+            if not ordered_df[ordered_df["chain"] == chain_id].empty else 100
         )
+        sub = sites_in_chain[chain_id]
+
+        # SASA strip (under the SS bar)
+        if has_dssp and chain_id in dssp_data:
+            xs, colors = [], []
+            for resnum in range(1, chain_len + 1):
+                hit = dssp_data[chain_id].get(resnum)
+                xs.append(resnum)
+                if hit and hit[1] is not None:
+                    colors.append(cmap(min(1.0, hit[1] / sasa_max)))
+                else:
+                    colors.append("#EEEEEE")
+            # Draw SASA as thin colored bars
+            ax.bar(xs, [0.25] * len(xs), bottom=-0.15, width=1.0,
+                   color=colors, linewidth=0)
+            # Draw SS as colored ribbon on top
+            for resnum in range(1, chain_len + 1):
+                hit = dssp_data[chain_id].get(resnum)
+                ss_color = _ss_to_color(hit[0]) if hit else "#D0D0D0"
+                ax.bar(resnum, 0.18, bottom=0.12, width=1.0,
+                       color=ss_color, linewidth=0)
+        else:
+            # Fallback: flat gray ribbon
+            ax.hlines(0.2, 1, chain_len, color="#D0D0D0", linewidth=6)
+
+        # Sequon glyphs + staggered labels
+        if not sub.empty:
+            ys_glyph = 0.21
+            label_rows = [0.55, 0.85]  # two-row stagger
+            for i, (_, site) in enumerate(sub.sort_values("pos_1idx").iterrows()):
+                x = site["pos_1idx"]
+                ax.scatter([x], [ys_glyph], s=85,
+                           c=EVIDENCE_COLORS.get(site["evidence_tier"], "#888"),
+                           edgecolors="#222222", linewidths=0.6, zorder=5)
+                yl = label_rows[i % 2]
+                ax.plot([x, x], [ys_glyph + 0.03, yl - 0.02],
+                        color="#666666", linewidth=0.5, zorder=4)
+                ax.text(x, yl, f"{site['site_label']}\n{site['motif']}",
+                        fontsize=7, ha="center", va="bottom",
+                        color="#222222", zorder=6)
+        else:
+            ax.text(chain_len / 2, 0.55, "no sequons detected",
+                    ha="center", va="center", fontsize=9, style="italic",
+                    color="#999999")
+
+        ax.set_xlim(-chain_len * 0.02, chain_len * 1.02)
+        ax.set_ylim(-0.2, 1.15)
+        ax.set_yticks([])
+        ax.spines[["left", "right", "top"]].set_visible(False)
+        ax.tick_params(axis="x", labelsize=8)
+        ax.set_title(f"Chain {chain_id}  ({chain_len} aa)",
+                     loc="left", fontsize=10, fontweight="bold", pad=4,
+                     color="#444444")
+        if row_idx == n_chains - 1:
+            ax.set_xlabel("Residue index", fontsize=9)
+
+    # Legend (bottom)
+    evidence_handles = [
+        Line2D([0], [0], marker="o", linestyle="", markersize=8,
+               markerfacecolor=EVIDENCE_COLORS[key],
+               markeredgecolor="#222222",
+               label=EVIDENCE_LABELS[key])
         for key in EVIDENCE_ORDER
     ]
-    policy_handles = [
-        Line2D(
-            [0], [0], marker="o", linestyle="", markersize=9,
-            markerfacecolor="white", markeredgewidth=2.5,
-            markeredgecolor=POLICY_COLORS[key], label=POLICY_LABELS[key],
-        )
-        for key in POLICY_ORDER
+    ss_handles = [
+        Line2D([0], [0], marker="s", linestyle="", markersize=10,
+               markerfacecolor="#5A9E8C", markeredgecolor="none",
+               label="α-helix"),
+        Line2D([0], [0], marker="s", linestyle="", markersize=10,
+               markerfacecolor="#C9A14A", markeredgecolor="none",
+               label="β-strand"),
+        Line2D([0], [0], marker="s", linestyle="", markersize=10,
+               markerfacecolor="#D0D0D0", markeredgecolor="none",
+               label="loop / coil"),
     ]
-    ax_track.legend(
-        handles=evidence_handles + policy_handles,
-        loc="upper center", bbox_to_anchor=(0.5, -0.18),
-        ncol=2, frameon=False, fontsize=9,
-    )
+    legend_handles = evidence_handles + ss_handles
+    legend_labels = [h.get_label() for h in legend_handles]
+    fig.legend(legend_handles, legend_labels,
+               loc="lower center", ncol=min(7, len(legend_handles)),
+               frameon=False, fontsize=8, bbox_to_anchor=(0.5, -0.02))
 
-    matrix_y = np.arange(len(ordered_df))[::-1]
-    ax_matrix.scatter(
-        np.zeros(len(ordered_df)), matrix_y, s=180,
-        c=[EVIDENCE_COLORS[val] for val in ordered_df["evidence_tier"]],
-        edgecolors="black", linewidths=0.6,
-    )
-    ax_matrix.scatter(
-        np.ones(len(ordered_df)), matrix_y, s=180,
-        c=[POLICY_COLORS[val] for val in ordered_df["selected_policy"]],
-        edgecolors="black", linewidths=0.6,
-    )
+    if has_dssp:
+        # SASA colorbar in top-right
+        cax = fig.add_axes([0.86, 0.93, 0.11, 0.015])
+        sm = plt.cm.ScalarMappable(cmap=cmap,
+                                   norm=plt.Normalize(vmin=0, vmax=sasa_max))
+        cb = fig.colorbar(sm, cax=cax, orientation="horizontal")
+        cb.ax.tick_params(labelsize=7)
+        cb.set_label("Relative SASA (buried → exposed)", fontsize=7,
+                     color="#444444")
 
-    glycan_markers = ["s" if flag else "x" for flag in ordered_df["has_glycan_tree"]]
-    for y, marker in zip(matrix_y, glycan_markers):
-        ax_matrix.scatter(2, y, s=100, c="#404040", marker=marker)
-
-    ax_matrix.set_xlim(-0.7, 2.5)
-    ax_matrix.set_xticks([0, 1, 2])
-    ax_matrix.set_xticklabels(["Evidence", "Selected\npolicy", "Resolved\nglycan"])
-    ax_matrix.set_yticks(matrix_y)
-    ax_matrix.set_yticklabels(
-        [f"{row.site_label} {row.motif}" for row in ordered_df.itertuples()],
-        fontsize=9,
-    )
-    ax_matrix.set_title("Why SugarFix is protecting each site")
-    ax_matrix.grid(axis="x", alpha=0.2)
-    ax_matrix.spines[["right", "top"]].set_visible(False)
-
-    fig.suptitle(
-        f"SugarFix site guide - {assessment['headline']}",
-        fontsize=14, fontweight="bold",
-    )
-    fig.tight_layout()
+    headline = assessment.get("headline", "") if isinstance(assessment, dict) else ""
+    title = "Sequon map across chains"
+    if headline:
+        title += f"  ·  {headline}"
+    fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.94))
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output_path, dpi=160, bbox_inches="tight")
+        fig.savefig(output_path, dpi=300, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
         print(f"Saved: {output_path}")
 
     plt.show()
@@ -722,7 +822,16 @@ def plot_design_dashboard(
         return
 
     condition_order = list(condition_summary_df["design_condition"])
-    fig = plt.figure(figsize=(18, 5.5))
+    plt.rcParams.update({
+        "axes.edgecolor": "#444444",
+        "axes.labelcolor": "#444444",
+        "xtick.color": "#444444",
+        "ytick.color": "#444444",
+        "text.color": "#444444",
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+    })
+    fig = plt.figure(figsize=(18, 6.0), facecolor="#FAFAFA")
     gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.3])
     ax_bar = fig.add_subplot(gs[0, 0])
     ax_scatter = fig.add_subplot(gs[0, 1])
@@ -734,12 +843,14 @@ def plot_design_dashboard(
     ax_bar.bar(
         x - width / 2,
         condition_summary_df["mean_functional_retention"] * 100,
-        width, color="#90caf9", label="Functional sequon retained",
+        width, color="#7BB6A6", edgecolor="#444444", linewidth=0.6,
+        label="Functional sequon retained",
     )
     ax_bar.bar(
         x + width / 2,
         condition_summary_df["mean_exact_retention"] * 100,
-        width, color="#66bb6a", label="Exact wild-type triplet",
+        width, color="#5A9E8C", edgecolor="#444444", linewidth=0.6,
+        label="Exact wild-type triplet",
     )
     ax_bar.set_xticks(x)
     ax_bar.set_xticklabels(
@@ -749,7 +860,8 @@ def plot_design_dashboard(
     ax_bar.set_ylabel("Retention (%)")
     ax_bar.set_ylim(0, 110)
     ax_bar.set_title("Glycosylation site retention")
-    ax_bar.legend(frameon=False, fontsize=9)
+    ax_bar.legend(frameon=False, fontsize=8, loc="upper center",
+                  bbox_to_anchor=(0.5, -0.22), ncol=2)
 
     # --- Middle panel: score vs sites satisfied ---
     for condition in condition_order:
@@ -768,7 +880,8 @@ def plot_design_dashboard(
     ax_scatter.set_xlabel("MPNN score (lower is better)")
     ax_scatter.set_ylabel("Required sites satisfied")
     ax_scatter.set_title("Design quality vs site preservation")
-    ax_scatter.legend(frameon=False, fontsize=8)
+    ax_scatter.legend(frameon=False, fontsize=8, loc="upper center",
+                      bbox_to_anchor=(0.5, -0.22), ncol=1)
 
     # --- Right panel: per-site heatmap of top designs ---
     if site_order:
@@ -793,26 +906,34 @@ def plot_design_dashboard(
                     matrix[row_idx, col_idx] = 0.0
                 annotations[row_idx, col_idx] = status.design_triplet
 
-        cmap = ListedColormap(["#c62828", "#ffb74d", "#2e7d32"])
+        cmap = ListedColormap(["#D88766", "#C9A14A", "#5A9E8C"])
         norm = BoundaryNorm([-0.1, 0.25, 0.75, 1.1], cmap.N)
         sns.heatmap(
             matrix, ax=ax_heat, cmap=cmap, norm=norm,
             annot=annotations, fmt="", cbar=False,
-            linewidths=0.5, linecolor="white",
+            linewidths=0.6, linecolor="#FAFAFA",
             xticklabels=site_order,
             yticklabels=[CONDITION_LABELS.get(name, name) for name in condition_order],
+            annot_kws={"color": "#222222", "fontsize": 9, "fontweight": "bold"},
         )
+        # Rotate site labels harder if there are many sites.
+        rot = 30 if len(site_order) <= 8 else 60
+        ax_heat.set_xticklabels(ax_heat.get_xticklabels(), rotation=rot, ha="right")
+        ax_heat.set_yticklabels(ax_heat.get_yticklabels(), rotation=0)
         legend_handles = [
             Line2D([0], [0], marker="s", linestyle="", markersize=10,
-                   markerfacecolor="#2e7d32", label="Functional sequon"),
+                   markerfacecolor="#5A9E8C", markeredgecolor="#444444",
+                   label="Functional sequon"),
             Line2D([0], [0], marker="s", linestyle="", markersize=10,
-                   markerfacecolor="#ffb74d", label="N retained only"),
+                   markerfacecolor="#C9A14A", markeredgecolor="#444444",
+                   label="N retained only"),
             Line2D([0], [0], marker="s", linestyle="", markersize=10,
-                   markerfacecolor="#c62828", label="Sequon lost"),
+                   markerfacecolor="#D88766", markeredgecolor="#444444",
+                   label="Sequon lost"),
         ]
         ax_heat.legend(
             handles=legend_handles, loc="upper center",
-            bbox_to_anchor=(0.5, -0.12), ncol=3, frameon=False, fontsize=8,
+            bbox_to_anchor=(0.5, -0.22), ncol=3, frameon=False, fontsize=8,
         )
         ax_heat.set_title("Per-site outcome (top design)")
         ax_heat.set_xlabel("Site")
@@ -822,7 +943,7 @@ def plot_design_dashboard(
         ax_heat.axis("off")
 
     fig.suptitle("SugarFix design dashboard", fontsize=14, fontweight="bold")
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.05, 1, 0.95))
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
