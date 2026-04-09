@@ -21,11 +21,11 @@
 # **Workflow:**
 # 1. Configure your target protein and design parameters
 # 2. Prepare the structure and detect glycosylation sites
-# 3. **Choose how to protect each site** (the key decision)
+# 3. Choose how to protect each site
 # 4. Run ProteinMPNN with your constraints
 # 5. Score designs and compare against an unconstrained baseline
 # 6. Export AF3 JSONs and save outputs
-# 7. *(Optional)* Analyze AF3 validation results after running AF3 externally
+# 7. *(Optional)* Analyse AF3 validation results after running AF3 externally
 #
 #
 
@@ -166,8 +166,7 @@ if IN_COLAB:
 # %% [markdown]
 # ## Configuration
 #
-# Adjust the controls below (or edit the defaults in the code cell) and then run the next cells.
-# The `session` object carries all state forward — no need to track separate variables.
+# Adjust the controls below (or edit the defaults in the code cell) and then run the next cells..
 
 # %%
 session = DesignSession(
@@ -611,9 +610,9 @@ else:
     print("No manual sites added.")
 
 # %% [markdown]
-# ## Step 3 — Choose Your Preservation Strategy
+# ## Step 3 — Choose a Preservation Strategy
 #
-# **This is the key design decision.** Use the controls below to decide how strictly
+# Use the controls to decide how strictly
 # each glycosylation site should be protected during redesign.
 #
 # You can:
@@ -1122,11 +1121,11 @@ condition_summary_df.to_csv(condition_summary_path, index=False)
 top_designs_df.to_csv(top_designs_path, index=False)
 
 # %% [markdown]
-# ## Poster figures
+# ## Figures (Draft)
 #
-# Generate the scaling poster visuals (per-site retention, design×site
+# Generate the scaling visuals (per-site retention, design×site
 # heatmap, central-residue logo, substitution stack). SugarFix panels are
-# automatically dropped when retention is 100% (uninformative).
+# automatically dropped when retention is 100% since it's uninformative.
 
 # %%
 from pipeline import figures as poster_figures
@@ -1213,7 +1212,7 @@ print("=" * 70)
 
 # %% [markdown]
 # ---
-# ## Step 7 — Analyze AF3 Validation Results *(Optional)*
+# ## Step 7 — Analyse AF3 Validation Results *(Optional)*
 #
 # After submitting the AF3 JSONs from Step 6 to the AlphaFold 3 Server (or running AF3 locally),
 # point this cell at the output directory to extract confidence metrics.
@@ -1292,9 +1291,7 @@ else:
 # %% [markdown]
 # ## Step 9 — Align AF3 Models in Colab *(Optional)*
 #
-# PyMOL is still the best local interactive viewer, but Colab can do the
-# structural alignment directly in Python. This cell uses the organized AF3
-# models from Step 8, aligns them to the prepared reference protein, writes
+# This cell uses the organized AF3 models from Step 8, aligns them to the prepared reference protein, writes
 # aligned PDBs, saves a Colab RMSD table, and opens the best aligned model in
 # an inline `py3Dmol` viewer.
 
