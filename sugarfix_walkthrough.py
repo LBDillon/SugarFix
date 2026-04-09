@@ -16,6 +16,8 @@
 # %% [markdown]
 # # SugarFix Designer Walkthrough
 #
+# [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LBDillon/SugarFix/blob/main/sugarfix_notebook.ipynb)
+#
 # An interactive decision console for glycosite-aware protein design.
 #
 # **Workflow:**

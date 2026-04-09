@@ -1,5 +1,7 @@
 # SugarFix
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LBDillon/SugarFix/blob/main/sugarfix_notebook.ipynb)
+
 Glycosylation-aware protein redesign with ProteinMPNN.
 
 ProteinMPNN systematically mutates away N-linked glycosylation sites: across 84 glycoproteins analysed, unconstrained designs retain only ~4% of sequons. SugarFix detects these sites, lets you choose how strictly to protect each one, runs ProteinMPNN with those constraints, and exports the designs for AlphaFold 3 validation.
