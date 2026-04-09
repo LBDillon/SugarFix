@@ -648,7 +648,7 @@ def plot_site_strategy_overview(
     output_path: Optional[Path] = None,
     pdb_path: Optional[Path] = None,
 ) -> None:
-    """Per-chain sequence track with SS / SASA overlay and sequon callouts.
+    """Per-chain sequence track with SS overlay and sequon callouts.
 
     Chains with no detected sequons are still shown as muted "no sequons" rows
     so the user has a complete chain inventory.
@@ -665,15 +665,8 @@ def plot_site_strategy_overview(
     dssp_data = _compute_dssp_per_chain(Path(pdb_path)) if pdb_path else {}
     has_dssp = bool(dssp_data)
 
-    plt.rcParams.update({
-        "axes.edgecolor": "#444444",
-        "axes.labelcolor": "#444444",
-        "xtick.color": "#444444",
-        "ytick.color": "#444444",
-        "text.color": "#444444",
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-    })
+    from pipeline.figures import apply_style
+    apply_style("C")
 
     n_chains = len(chains)
     # Each chain gets ~1.6 inches of vertical space (track + label callouts).
@@ -687,14 +680,6 @@ def plot_site_strategy_overview(
         if pd.notna(r.get("pdb_resnum")):
             pos_to_resnum.setdefault(r["chain"], {})[int(r["pos_1idx"])] = int(r["pdb_resnum"])
 
-    sasa_max = 1.0
-    if has_dssp:
-        all_sasa = [v[1] for d in dssp_data.values() for v in d.values()
-                    if v[1] is not None]
-        if all_sasa:
-            sasa_max = max(0.4, min(1.0, max(all_sasa)))
-
-    cmap = plt.cm.get_cmap("YlGnBu_r")  # buried -> exposed
     sites_in_chain = {c: ordered_df[ordered_df["chain"] == c] for c in chains}
 
     for row_idx, chain_id in enumerate(chains):
@@ -705,27 +690,14 @@ def plot_site_strategy_overview(
         )
         sub = sites_in_chain[chain_id]
 
-        # SASA strip (under the SS bar)
+        # SS ribbon
         if has_dssp and chain_id in dssp_data:
-            xs, colors = [], []
-            for resnum in range(1, chain_len + 1):
-                hit = dssp_data[chain_id].get(resnum)
-                xs.append(resnum)
-                if hit and hit[1] is not None:
-                    colors.append(cmap(min(1.0, hit[1] / sasa_max)))
-                else:
-                    colors.append("#EEEEEE")
-            # Draw SASA as thin colored bars
-            ax.bar(xs, [0.25] * len(xs), bottom=-0.15, width=1.0,
-                   color=colors, linewidth=0)
-            # Draw SS as colored ribbon on top
             for resnum in range(1, chain_len + 1):
                 hit = dssp_data[chain_id].get(resnum)
                 ss_color = _ss_to_color(hit[0]) if hit else "#D0D0D0"
                 ax.bar(resnum, 0.18, bottom=0.12, width=1.0,
                        color=ss_color, linewidth=0)
         else:
-            # Fallback: flat gray ribbon
             ax.hlines(0.2, 1, chain_len, color="#D0D0D0", linewidth=6)
 
         # Sequon glyphs + staggered labels
@@ -780,26 +752,19 @@ def plot_site_strategy_overview(
     ]
     legend_handles = evidence_handles + ss_handles
     legend_labels = [h.get_label() for h in legend_handles]
+    # Reserve dedicated bottom strip for the legend so it never overlaps axes.
+    legend_frac = min(0.18, 0.04 + 0.012 * len(legend_handles))
     fig.legend(legend_handles, legend_labels,
                loc="lower center", ncol=min(7, len(legend_handles)),
-               frameon=False, fontsize=8, bbox_to_anchor=(0.5, -0.02))
-
-    if has_dssp:
-        # SASA colorbar in top-right
-        cax = fig.add_axes([0.86, 0.93, 0.11, 0.015])
-        sm = plt.cm.ScalarMappable(cmap=cmap,
-                                   norm=plt.Normalize(vmin=0, vmax=sasa_max))
-        cb = fig.colorbar(sm, cax=cax, orientation="horizontal")
-        cb.ax.tick_params(labelsize=7)
-        cb.set_label("Relative SASA (buried → exposed)", fontsize=7,
-                     color="#444444")
+               frameon=False, fontsize=8,
+               bbox_to_anchor=(0.5, 0.0))
 
     headline = assessment.get("headline", "") if isinstance(assessment, dict) else ""
     title = "Sequon map across chains"
     if headline:
         title += f"  ·  {headline}"
     fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
-    fig.tight_layout(rect=(0, 0.04, 1, 0.94))
+    fig.tight_layout(rect=(0, legend_frac, 1, 0.94))
 
     if output_path is not None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -822,15 +787,8 @@ def plot_design_dashboard(
         return
 
     condition_order = list(condition_summary_df["design_condition"])
-    plt.rcParams.update({
-        "axes.edgecolor": "#444444",
-        "axes.labelcolor": "#444444",
-        "xtick.color": "#444444",
-        "ytick.color": "#444444",
-        "text.color": "#444444",
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-    })
+    from pipeline.figures import apply_style
+    apply_style("C")
     fig = plt.figure(figsize=(18, 6.0), facecolor="#FAFAFA")
     gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.3])
     ax_bar = fig.add_subplot(gs[0, 0])

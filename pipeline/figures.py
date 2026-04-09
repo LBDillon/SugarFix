@@ -74,15 +74,17 @@ AA_GROUPS = {
 }
 
 
-def _apply_style(palette):
+def apply_style(palette_key: str = "C"):
+    """Apply the SugarFix matplotlib style. Safe to call repeatedly."""
+    pal = PALETTES[palette_key] if isinstance(palette_key, str) else palette_key
     plt.rcParams.update({
-        "figure.facecolor": palette["bg"],
-        "axes.facecolor":   palette["bg"],
-        "axes.edgecolor":   palette["accent"],
-        "axes.labelcolor":  palette["accent"],
-        "xtick.color":      palette["accent"],
-        "ytick.color":      palette["accent"],
-        "text.color":       palette["accent"],
+        "figure.facecolor": pal["bg"],
+        "axes.facecolor":   pal["bg"],
+        "axes.edgecolor":   pal["accent"],
+        "axes.labelcolor":  pal["accent"],
+        "xtick.color":      pal["accent"],
+        "ytick.color":      pal["accent"],
+        "text.color":       pal["accent"],
         "axes.spines.top":  False,
         "axes.spines.right": False,
         "font.size":        10,
@@ -91,6 +93,36 @@ def _apply_style(palette):
         "savefig.dpi":      300,
         "savefig.bbox":     "tight",
     })
+
+
+_apply_style = apply_style  # backward-compat alias used internally
+
+
+def _finalize(fig, out_path: Optional[Path]) -> Optional[Path]:
+    """Save (if path given) and display the figure exactly once."""
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path)
+    plt.show()
+    return out_path
+
+
+def _conditions_to_show(df: pd.DataFrame) -> list:
+    """Return which conditions are worth plotting.
+
+    Drops `designer_selected` when it perfectly preserves every site (100% exact
+    retention) — that panel is redundant when SugarFix is hitting its plan.
+    """
+    conds = []
+    for cond in ("designer_selected", "soft_filter"):
+        sub = df[df["design_condition"] == cond]
+        if sub.empty:
+            continue
+        if cond == "designer_selected" and sub["exact_match"].all():
+            continue
+        conds.append(cond)
+    return conds
 
 
 # ----- Data prep -----------------------------------------------------------
@@ -128,18 +160,19 @@ def substitution_distribution(df: pd.DataFrame) -> pd.DataFrame:
 
 # ----- Individual visuals --------------------------------------------------
 
-def plot_per_site_retention(df: pd.DataFrame, palette_key: str, ax=None):
+def plot_per_site_retention(df: pd.DataFrame, palette_key: str,
+                            out_path: Optional[Path] = None, ax=None):
     pal = PALETTES[palette_key]
-    _apply_style(pal)
+    apply_style(pal)
     summary = per_site_retention(df)
 
     sites = sorted(summary["site_label"].unique())
-    conds = ["designer_selected", "soft_filter"]
+    conds = _conditions_to_show(df) or ["designer_selected", "soft_filter"]
     width = 0.38
     x = np.arange(len(sites))
 
-    if ax is None:
-        # Auto-size to site count: ~0.7" per site, min 5", max 14"
+    embedded = ax is not None
+    if not embedded:
         w = max(5, min(14, 0.9 * len(sites) + 2.5))
         fig, ax = plt.subplots(figsize=(w, 4))
     else:
@@ -160,7 +193,11 @@ def plot_per_site_retention(df: pd.DataFrame, palette_key: str, ax=None):
     ax.axhline(0, color=pal["accent"], linewidth=0.6)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2,
               frameon=False, fontsize=9)
-    return fig
+    if embedded:
+        return fig
+    fig.tight_layout()
+    _finalize(fig, out_path)
+    return out_path
 
 
 def plot_palette_preview(retention_csv: Path, out_path: Path):
@@ -172,9 +209,7 @@ def plot_palette_preview(retention_csv: Path, out_path: Path):
     fig.suptitle("Palette preview — pick A, B, or C",
                  fontsize=14, fontweight="bold", y=1.05)
     fig.tight_layout()
-    fig.savefig(out_path)
-    plt.close(fig)
-    return out_path
+    return _finalize(fig, out_path)
 
 
 def plot_substitution_stack(df: pd.DataFrame, palette_key: str, out_path: Path):
@@ -217,26 +252,7 @@ def plot_substitution_stack(df: pd.DataFrame, palette_key: str, out_path: Path):
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3),
               ncol=4, frameon=False, fontsize=8)
     fig.tight_layout()
-    fig.savefig(out_path)
-    plt.close(fig)
-    return out_path
-
-
-def _conditions_to_show(df: pd.DataFrame) -> list[str]:
-    """Return which conditions are worth plotting.
-
-    Drops `designer_selected` when it perfectly preserves every site (100% exact
-    retention) — that panel is redundant when SugarFix is hitting its plan.
-    """
-    conds = []
-    for cond in ("designer_selected", "soft_filter"):
-        sub = df[df["design_condition"] == cond]
-        if sub.empty:
-            continue
-        if cond == "designer_selected" and sub["exact_match"].all():
-            continue
-        conds.append(cond)
-    return conds
+    return _finalize(fig, out_path)
 
 
 def plot_design_x_site_heatmap(df: pd.DataFrame, palette_key: str, out_path: Path):
@@ -294,9 +310,7 @@ def plot_design_x_site_heatmap(df: pd.DataFrame, palette_key: str, out_path: Pat
                bbox_to_anchor=(0.5, 0.02), ncol=2, frameon=False)
     fig.suptitle("Per-design site retention", fontsize=13, fontweight="bold")
     fig.tight_layout(rect=(0, 0.05, 1, 0.96))
-    fig.savefig(out_path)
-    plt.close(fig)
-    return out_path
+    return _finalize(fig, out_path)
 
 
 def plot_central_residue_logo(df: pd.DataFrame, palette_key: str, out_path: Path):
@@ -360,9 +374,7 @@ def plot_central_residue_logo(df: pd.DataFrame, palette_key: str, out_path: Path
     fig.suptitle("Central-position residue distribution per site",
                  fontsize=13, fontweight="bold")
     fig.tight_layout(rect=(0, 0.08, 1, 0.96))
-    fig.savefig(out_path)
-    plt.close(fig)
-    return out_path
+    return _finalize(fig, out_path)
 
 
 # ----- Driver --------------------------------------------------------------
@@ -373,16 +385,13 @@ def make_all(retention_csv: Path, out_dir: Path,
     out_dir.mkdir(parents=True, exist_ok=True)
     df = load_retention(Path(retention_csv))
 
-    paths = {}
-    paths["palette_preview"] = plot_palette_preview(
-        retention_csv, out_dir / "palette_preview.png")
-    paths["per_site_retention"] = plot_per_site_retention(df, palette).savefig(
-        out_dir / f"per_site_retention_{palette}.png") or (
-        out_dir / f"per_site_retention_{palette}.png")
-    paths["substitution_stack"] = plot_substitution_stack(
-        df, palette, out_dir / f"substitution_stack_{palette}.png")
-    paths["design_x_site"] = plot_design_x_site_heatmap(
-        df, palette, out_dir / f"design_x_site_{palette}.png")
-    paths["central_logo"] = plot_central_residue_logo(
-        df, palette, out_dir / f"central_logo_{palette}.png")
-    return paths
+    return {
+        "per_site_retention": plot_per_site_retention(
+            df, palette, out_dir / "per_site_retention.png"),
+        "substitution_stack": plot_substitution_stack(
+            df, palette, out_dir / "substitution_stack.png"),
+        "design_x_site": plot_design_x_site_heatmap(
+            df, palette, out_dir / "design_x_site.png"),
+        "central_logo": plot_central_residue_logo(
+            df, palette, out_dir / "central_logo.png"),
+    }

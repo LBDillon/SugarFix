@@ -1128,12 +1128,9 @@ top_designs_df.to_csv(top_designs_path, index=False)
 # automatically dropped when retention is 100% since it's uninformative.
 
 # %%
-from pipeline import figures as poster_figures
+from pipeline import figures as sf_figures
 
-poster_dir = session.figure_dir / "poster"
-poster_paths = poster_figures.make_all(retention_path, poster_dir, palette="C")
-for name, p in poster_paths.items():
-    print(f"  {name}: {p}")
+sf_figures.make_all(retention_path, session.figure_dir, palette="C")
 
 constraint_payload = {}
 for condition_name, bundle in constraints_by_condition.items():
