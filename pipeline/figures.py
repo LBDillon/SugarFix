@@ -131,46 +131,7 @@ def substitution_distribution(df: pd.DataFrame) -> pd.DataFrame:
     return counts
 
 
-# ----- Individual visuals --------------------------------------------------
-
-def plot_per_site_retention(df: pd.DataFrame,
-                            out_path: Optional[Path] = None, ax=None):
-    pal = PALETTE
-    apply_style()
-    summary = per_site_retention(df)
-
-    sites = sorted(summary["site_label"].unique())
-    conds = _conditions_to_show(df) or ["designer_selected", "soft_filter"]
-    width = 0.38
-    x = np.arange(len(sites))
-
-    embedded = ax is not None
-    if not embedded:
-        w = max(5, min(14, 0.9 * len(sites) + 2.5))
-        fig, ax = plt.subplots(figsize=(w, 4))
-    else:
-        fig = ax.figure
-
-    for i, cond in enumerate(conds):
-        sub = summary[summary["design_condition"] == cond].set_index("site_label")
-        vals = [sub.loc[s, "retention"] if s in sub.index else 0 for s in sites]
-        color = pal["designer"] if cond == "designer_selected" else pal["soft"]
-        ax.bar(x + (i - 0.5) * width, vals, width, color=color,
-               label=CONDITION_LABEL[cond], edgecolor=pal["accent"], linewidth=0.6)
-
-    ax.set_xticks(x)
-    ax.set_xticklabels(sites, rotation=30 if len(sites) <= 8 else 60, ha="right")
-    ax.set_ylim(0, 1.05)
-    ax.set_ylabel("Sequon retention rate")
-    ax.set_title("Sequon retention per site")
-    ax.axhline(0, color=pal["accent"], linewidth=0.6)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2,
-              frameon=False, fontsize=9)
-    if embedded:
-        return fig
-    fig.tight_layout()
-    _finalize(fig, out_path)
-    return out_path
+# ----- Individual visuals -------------------------------------------------
 
 
 def plot_substitution_stack(df: pd.DataFrame, out_path: Path):
