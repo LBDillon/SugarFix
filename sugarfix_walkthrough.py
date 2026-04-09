@@ -1132,7 +1132,7 @@ top_designs_df.to_csv(top_designs_path, index=False)
 # %%
 from pipeline import figures as sf_figures
 
-sf_figures.make_all(retention_path, session.figure_dir, palette="C")
+sf_figures.make_all(retention_path, session.figure_dir)
 
 constraint_payload = {}
 for condition_name, bundle in constraints_by_condition.items():

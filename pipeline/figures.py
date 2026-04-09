@@ -1,13 +1,8 @@
-"""Poster-ready visualisations for SugarFix vs vanilla ProteinMPNN.
+"""Visualisations for SugarFix vs vanilla ProteinMPNN.
 
 All plots scale to any number of designs (8, 32, 64, 128) and any number of
-sites (1 -> 12+). Use `make_all(retention_csv, out_dir, palette="A")` to
-produce a full set, or call individual builders.
-
-Palettes:
-    A = "Muted earth"
-    B = "Pastel pharma"
-    C = "Okabe-Ito soft"
+sites (1 -> 12+). Use `make_all(retention_csv, out_dir)` to produce the full
+set, or call individual builders.
 """
 
 from __future__ import annotations
@@ -21,41 +16,19 @@ import pandas as pd
 
 # ----- Palettes ------------------------------------------------------------
 
-PALETTES = {
-    "A": {  # muted earth
-        "name": "Muted earth",
-        "designer": "#7FA88B",
-        "soft":     "#D08B6E",
-        "glycan":   "#D4B26A",
-        "accent":   "#4A4A4A",
-        "bg":       "#FAFAF7",
-        "grid":     "#DDD8CE",
-        "lost":     "#D08B6E",
-        "kept":     "#7FA88B",
-    },
-    "B": {  # pastel pharma
-        "name": "Pastel pharma",
-        "designer": "#9BCDB6",
-        "soft":     "#F2A09B",
-        "glycan":   "#B7A7D9",
-        "accent":   "#5B6B7A",
-        "bg":       "#FBFAFD",
-        "grid":     "#E1DDE9",
-        "lost":     "#F2A09B",
-        "kept":     "#9BCDB6",
-    },
-    "C": {  # Okabe-Ito soft
-        "name": "Okabe-Ito soft",
-        "designer": "#5A9E8C",
-        "soft":     "#D88766",
-        "glycan":   "#C9A14A",
-        "accent":   "#444444",
-        "bg":       "#FAFAFA",
-        "grid":     "#DCDCDC",
-        "lost":     "#D88766",
-        "kept":     "#5A9E8C",
-    },
+PALETTE = {
+    "designer": "#5A9E8C",
+    "soft":     "#D88766",
+    "glycan":   "#C9A14A",
+    "polar":    "#C7D9E8",
+    "accent":   "#444444",
+    "bg":       "#FAFAFA",
+    "grid":     "#DCDCDC",
+    "lost":     "#D88766",
+    "kept":     "#5A9E8C",
 }
+# Backward-compat: some callers still pass palette_key="C".
+PALETTES = {"C": PALETTE}
 
 CONDITION_LABEL = {
     "designer_selected": "SugarFix (evidence-aware)",
@@ -74,9 +47,9 @@ AA_GROUPS = {
 }
 
 
-def apply_style(palette_key: str = "C"):
+def apply_style(palette_key=None):
     """Apply the SugarFix matplotlib style. Safe to call repeatedly."""
-    pal = PALETTES[palette_key] if isinstance(palette_key, str) else palette_key
+    pal = PALETTE
     plt.rcParams.update({
         "figure.facecolor": pal["bg"],
         "axes.facecolor":   pal["bg"],
@@ -160,10 +133,10 @@ def substitution_distribution(df: pd.DataFrame) -> pd.DataFrame:
 
 # ----- Individual visuals --------------------------------------------------
 
-def plot_per_site_retention(df: pd.DataFrame, palette_key: str,
+def plot_per_site_retention(df: pd.DataFrame,
                             out_path: Optional[Path] = None, ax=None):
-    pal = PALETTES[palette_key]
-    apply_style(pal)
+    pal = PALETTE
+    apply_style()
     summary = per_site_retention(df)
 
     sites = sorted(summary["site_label"].unique())
@@ -189,7 +162,7 @@ def plot_per_site_retention(df: pd.DataFrame, palette_key: str,
     ax.set_xticklabels(sites, rotation=30 if len(sites) <= 8 else 60, ha="right")
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("Sequon retention rate")
-    ax.set_title(f"Sequon retention per site  ·  {pal['name']}")
+    ax.set_title("Sequon retention per site")
     ax.axhline(0, color=pal["accent"], linewidth=0.6)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2,
               frameon=False, fontsize=9)
@@ -200,22 +173,10 @@ def plot_per_site_retention(df: pd.DataFrame, palette_key: str,
     return out_path
 
 
-def plot_palette_preview(retention_csv: Path, out_path: Path):
-    """One row, three columns — same chart in palettes A, B, C side by side."""
-    df = load_retention(retention_csv)
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
-    for ax, key in zip(axes, ["A", "B", "C"]):
-        plot_per_site_retention(df, key, ax=ax)
-    fig.suptitle("Palette preview — pick A, B, or C",
-                 fontsize=14, fontweight="bold", y=1.05)
-    fig.tight_layout()
-    return _finalize(fig, out_path)
-
-
-def plot_substitution_stack(df: pd.DataFrame, palette_key: str, out_path: Path):
+def plot_substitution_stack(df: pd.DataFrame, out_path: Path):
     """Aggregate stacked bar: what does each condition put at the central position?"""
-    pal = PALETTES[palette_key]
-    _apply_style(pal)
+    pal = PALETTE
+    apply_style()
     counts = substitution_distribution(df)
 
     conds = _conditions_to_show(df)
@@ -225,7 +186,7 @@ def plot_substitution_stack(df: pd.DataFrame, palette_key: str, out_path: Path):
         "N (kept)":   pal["kept"],
         "Acidic":     pal["soft"],
         "Basic":      pal["glycan"],
-        "Polar":      "#A8C8B8" if palette_key == "A" else "#C7D9E8",
+        "Polar":      pal["polar"],
         "Aromatic":   "#B89B7A",
         "Hydrophobic": "#9B9B9B",
         "Special":    "#C2B8A3",
@@ -255,14 +216,14 @@ def plot_substitution_stack(df: pd.DataFrame, palette_key: str, out_path: Path):
     return _finalize(fig, out_path)
 
 
-def plot_design_x_site_heatmap(df: pd.DataFrame, palette_key: str, out_path: Path):
+def plot_design_x_site_heatmap(df: pd.DataFrame, out_path: Path):
     """Per-protein heatmap: rows = designs, cols = sites, cell = kept/lost.
 
     Auto-sizes to design count (8/32/64/128) and site count (1..N).
     Drops the SugarFix panel if it is 100% retained (uninformative).
     """
-    pal = PALETTES[palette_key]
-    _apply_style(pal)
+    pal = PALETTE
+    apply_style()
     sites = sorted(df["site_label"].unique())
     conds = _conditions_to_show(df)
     if not conds:
@@ -313,10 +274,10 @@ def plot_design_x_site_heatmap(df: pd.DataFrame, palette_key: str, out_path: Pat
     return _finalize(fig, out_path)
 
 
-def plot_central_residue_logo(df: pd.DataFrame, palette_key: str, out_path: Path):
+def plot_central_residue_logo(df: pd.DataFrame, out_path: Path):
     """Stacked-frequency strip per site (works for any N_sites and N_designs)."""
-    pal = PALETTES[palette_key]
-    _apply_style(pal)
+    pal = PALETTE
+    apply_style()
     df = df.copy()
     df["central"] = df["design_motif"].str[0]
     sites = sorted(df["site_label"].unique())
@@ -333,7 +294,7 @@ def plot_central_residue_logo(df: pd.DataFrame, palette_key: str, out_path: Path
         "N (kept)":  pal["kept"],
         "Acidic":    pal["soft"],
         "Basic":     pal["glycan"],
-        "Polar":     "#A8C8B8" if palette_key == "A" else "#C7D9E8",
+        "Polar":     pal["polar"],
         "Aromatic":  "#B89B7A",
         "Hydrophobic": "#9B9B9B",
         "Special":   "#C2B8A3",
@@ -379,19 +340,18 @@ def plot_central_residue_logo(df: pd.DataFrame, palette_key: str, out_path: Path
 
 # ----- Driver --------------------------------------------------------------
 
-def make_all(retention_csv: Path, out_dir: Path,
-             palette: str = "A") -> dict:
+def make_all(retention_csv: Path, out_dir: Path, **_ignored) -> dict:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     df = load_retention(Path(retention_csv))
 
     return {
         "per_site_retention": plot_per_site_retention(
-            df, palette, out_dir / "per_site_retention.png"),
+            df, out_dir / "per_site_retention.png"),
         "substitution_stack": plot_substitution_stack(
-            df, palette, out_dir / "substitution_stack.png"),
+            df, out_dir / "substitution_stack.png"),
         "design_x_site": plot_design_x_site_heatmap(
-            df, palette, out_dir / "design_x_site.png"),
+            df, out_dir / "design_x_site.png"),
         "central_logo": plot_central_residue_logo(
-            df, palette, out_dir / "central_logo.png"),
+            df, out_dir / "central_logo.png"),
     }
