@@ -16,7 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 proteinmpnn = ["colabdesign @ git+https://github.com/sokrypton/ColabDesign.git@v1.1.0"]
-esm_if = ["fair-esm[esmfold]"]
+esm_if = ["fair-esm", "biotite", "torch-geometric", "torch-scatter"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
