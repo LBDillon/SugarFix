@@ -1,0 +1,23 @@
+pdb_id,chain_id,protein_name,glycosite_positions,n_glycosites,sequence_length,source
+1CF3,A,1CF3 (auto-detected),"43,89,161,168,258,355,388,473",8,581,automated_scan
+1DN2,A,1DN2 (auto-detected),297,1,207,automated_scan
+1DN2,B,1DN2 (auto-detected),297,1,207,automated_scan
+1EW3,A,1EW3 (auto-detected),"53,68",2,159,automated_scan
+1EZJ,A,1EZJ (auto-detected),"3,106",2,114,automated_scan
+1GAL,A,1GAL (auto-detected),"43,89,161,168,258,355,388,473",8,581,automated_scan
+1GPE,A,1GPE (auto-detected),"93,165,172,317,357,392,501",7,587,automated_scan
+1HRP,A,1HRP (auto-detected),"52,78",2,86,automated_scan
+1HRP,B,1HRP (auto-detected),"13,30",2,110,automated_scan
+1HZH,H,1HZH (auto-detected),314,1,457,automated_scan
+1LEG,A,1LEG (auto-detected),"86,176",2,274,automated_scan
+1N8Z,C,1N8Z (auto-detected),"46,165,237,508,549",5,581,automated_scan
+1OQO,A,1OQO (auto-detected),297,1,208,automated_scan
+1QFW,A,1QFW (auto-detected),"52,78",2,87,automated_scan
+1QFW,B,1QFW (auto-detected),"13,30",2,111,automated_scan
+1RBX,A,1RBX (auto-detected),34,1,124,automated_scan
+1RUZ,H,1RUZ (auto-detected),"14,15,27,91,290",5,324,automated_scan
+2YP7,A,2YP7 (auto-detected),"8,22,38,63,122,126,133,144,165,246,285,483",12,490,automated_scan
+2ZCH,P,2ZCH (auto-detected),61,1,237,automated_scan
+3SGJ,A,3SGJ (auto-detected),297,1,219,automated_scan
+3TIH,A,3TIH (auto-detected),"88,230,241,262,276,289,334,339,386,392,413,448",12,326,automated_scan
+4BYH,A,4BYH (auto-detected),297,1,207,automated_scan

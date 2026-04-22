@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glyco-design"
+version = "0.1.0"
+description = "Modular inverse-folding design pipeline for N-glycosylation sequon retention analysis"
+requires-python = ">=3.9"
+dependencies = [
+    "biopython",
+    "numpy",
+    "pandas",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+proteinmpnn = ["colabdesign @ git+https://github.com/sokrypton/ColabDesign.git@v1.1.0"]
+esm_if = ["fair-esm[esmfold]"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

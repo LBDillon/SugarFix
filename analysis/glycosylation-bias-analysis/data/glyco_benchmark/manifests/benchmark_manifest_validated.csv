@@ -1,0 +1,6 @@
+pdb_id,chain_id,protein_name,glycosite_positions,n_glycosites,sequence_length,validation_status
+3SGJ,A,IgG1 Fc (complex glycan),297,1,219,all_valid
+1DN2,A,IgG1 Fc (biantennary),297,1,207,all_valid
+1DN2,A,IgG1 Fc (biantennary),297,1,207,all_valid
+1RBX,A,Ribonuclease B,34,1,124,all_valid
+1HRP,A,Glycoprotein hormones alpha chain,"52,78",2,86,all_valid

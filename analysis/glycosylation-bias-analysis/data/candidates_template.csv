@@ -1,0 +1,3 @@
+pdb_id,chain_id,uniprot_id,gene_name,organism,glyco_type,n_glycosites,resolution,notes
+1RUZ,A,P03437,HA,Influenza A,N-linked,7,1.90,Example: influenza hemagglutinin
+1ZXQ,A,P01857,IGHG1,Homo sapiens,N-linked,1,2.00,Example: IgG1 Fc fragment
