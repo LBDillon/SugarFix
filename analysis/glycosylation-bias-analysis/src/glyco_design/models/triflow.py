@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import sys
 import gc
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -92,9 +93,10 @@ class TriFlowDesignModel(DesignModel):
         from triflow.utils.tensor_utils import tensor_tree_map
 
         predictor = self._predictor
+        triflow_pdb_path = self._sanitize_pdb_for_triflow(pdb_path, chain)
 
         data, seq_prior = predictor.process_pdb(
-            pdb_path=pdb_path,
+            pdb_path=triflow_pdb_path,
             chain_condition=chain if fix_pos else None,
             res_condition=fix_pos if fix_pos else None,
         )
@@ -157,3 +159,52 @@ class TriFlowDesignModel(DesignModel):
             seqid=seqids,
             meta={"ckpt_path": self.ckpt_path, "temperature": temperature},
         )
+
+    @staticmethod
+    def _sanitize_pdb_for_triflow(pdb_path: str, chain: str) -> str:
+        """Write a TriFlow-compatible copy with insertion codes removed.
+
+        TriFlow rejects PDB insertion codes. For inverse folding we only need the
+        ordered backbone, so this rewrites ATOM records for the selected chain
+        with contiguous residue numbers and blank insertion-code columns.
+        """
+        source = Path(pdb_path)
+        out_dir = Path(tempfile.gettempdir()) / "glyco_design_triflow_pdbs"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        target = out_dir / f"{source.stem}_{chain}_triflow_clean.pdb"
+
+        residue_numbers: dict[tuple[str, str, str, str], int] = {}
+        residue_counts: dict[str, int] = {}
+        atom_serial = 1
+        wrote_atom = False
+        saw_insertion = False
+
+        with open(source, "r") as inp, open(target, "w") as out:
+            for line in inp:
+                if not line.startswith("ATOM  "):
+                    continue
+                chain_id = line[21]
+                if chain and chain_id != chain:
+                    continue
+
+                insertion_code = line[26]
+                saw_insertion = saw_insertion or bool(insertion_code.strip())
+                residue_key = (chain_id, line[22:26], insertion_code, line[17:20])
+                if residue_key not in residue_numbers:
+                    residue_counts[chain_id] = residue_counts.get(chain_id, 0) + 1
+                    residue_numbers[residue_key] = residue_counts[chain_id]
+
+                new_residue_num = residue_numbers[residue_key]
+                out.write(
+                    f"{line[:6]}{atom_serial:5d}{line[11:22]}"
+                    f"{new_residue_num:4d} {line[27:]}"
+                )
+                atom_serial += 1
+                wrote_atom = True
+            out.write("TER\nEND\n")
+
+        if not wrote_atom:
+            return str(source)
+        if saw_insertion:
+            print(f"[triflow] using insertion-code-free PDB: {target}")
+        return str(target)
