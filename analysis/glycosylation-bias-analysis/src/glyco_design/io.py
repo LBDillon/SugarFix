@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import List, Optional
 
 from glyco_design.base import DesignResult
 
@@ -71,3 +71,69 @@ def save_designs_fasta(
                 f"|score={score:.4f}|seqid={seqid:.4f}"
             )
             f.write(f"{header}\n{seq}\n")
+
+
+def load_designs_fasta(path: str | Path, max_seqs: Optional[int] = None) -> DesignResult:
+    """Load a design FASTA written by `save_designs_fasta`.
+
+    The parser is intentionally permissive so downloaded or hand-collected FASTA
+    files can be reused even if scores/seqids are absent from the headers.
+    """
+    path = Path(path)
+    sequences: List[str] = []
+    scores: List[float] = []
+    seqids: List[float] = []
+    header: Optional[str] = None
+    chunks: List[str] = []
+
+    def flush_record() -> None:
+        nonlocal header, chunks
+        if header is None:
+            return
+        seq = "".join(chunks).replace(" ", "").strip()
+        if not seq:
+            header = None
+            chunks = []
+            return
+        sequences.append(seq)
+        meta = _parse_fasta_header_meta(header)
+        scores.append(meta.get("score", float("nan")))
+        seqids.append(meta.get("seqid", float("nan")))
+        header = None
+        chunks = []
+
+    with open(path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                flush_record()
+                if max_seqs is not None and len(sequences) >= max_seqs:
+                    break
+                header = line[1:]
+                chunks = []
+            else:
+                chunks.append(line)
+        if max_seqs is None or len(sequences) < max_seqs:
+            flush_record()
+
+    if max_seqs is not None:
+        sequences = sequences[:max_seqs]
+        scores = scores[:max_seqs]
+        seqids = seqids[:max_seqs]
+
+    return DesignResult(sequences=sequences, scores=scores, seqid=seqids)
+
+
+def _parse_fasta_header_meta(header: str) -> dict:
+    meta = {}
+    for part in header.split("|")[1:]:
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        try:
+            meta[key] = float(value)
+        except ValueError:
+            continue
+    return meta

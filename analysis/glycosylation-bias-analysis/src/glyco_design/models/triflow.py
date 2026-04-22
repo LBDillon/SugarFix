@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import gc
 from pathlib import Path
 from typing import List, Optional
 
@@ -28,7 +29,7 @@ class TriFlowDesignModel(DesignModel):
         self,
         triflow_dir: str,
         ckpt_path: Optional[str] = None,
-        device: str = "cuda:0",
+        device: Optional[str] = None,
     ):
         self.triflow_dir = str(Path(triflow_dir).resolve())
         self.ckpt_path = ckpt_path or str(
@@ -37,6 +38,18 @@ class TriFlowDesignModel(DesignModel):
         self.device = device
         self._predictor = None
         self._aatype_to_str = None
+
+    @staticmethod
+    def _resolve_device(device: Optional[str]) -> str:
+        import torch
+
+        if device in (None, "auto"):
+            return "cuda:0" if torch.cuda.is_available() else "cpu"
+        device = str(device)
+        if device.startswith("cuda") and not torch.cuda.is_available():
+            print("[triflow] requested CUDA but it is unavailable; using CPU")
+            return "cpu"
+        return device
 
     def load(self, **kwargs) -> None:
         if not Path(self.ckpt_path).exists():
@@ -47,6 +60,7 @@ class TriFlowDesignModel(DesignModel):
 
         from sample import TriFoldPredictor
 
+        self.device = self._resolve_device(self.device)
         self._predictor = TriFoldPredictor(ckpt_path=self.ckpt_path, device=self.device)
 
         # TriFlow stores the AA-index → letter decoder in a few possible places
@@ -94,7 +108,8 @@ class TriFlowDesignModel(DesignModel):
         )
         rigid_frames = scale_trans(rigid_frames, 0.1)
         data["noise_label"] = torch.tensor([0.0], device=predictor.device)[None]
-        torch.backends.cuda.matmul.allow_tf32 = True
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
 
         native_seq_ids = torch.argmax(data["target_feat"][..., -1], dim=-1)[0]  # (L,)
         native_seq = self._aatype_to_str(native_seq_ids.cpu())
@@ -131,6 +146,10 @@ class TriFlowDesignModel(DesignModel):
                 seqids.append(
                     sum(1 for i in range(n) if seq[i] == native_seq[i]) / n if n else float("nan")
                 )
+                del prot_traj, _conf, unmasked_probs, probs, chosen, idx, sampled_ids
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                gc.collect()
 
         return DesignResult(
             sequences=sequences,
