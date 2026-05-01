@@ -7,3 +7,6 @@ data/
 figures/
 _run.ipynb
 .DS_Store
+
+.claude/
+scripts/
