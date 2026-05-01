@@ -34,15 +34,7 @@ for _c in _candidates:
         PMPNN_DIR = Path(_c).resolve()
         break
 
-if PMPNN_DIR is None:
-    raise ImportError(
-        "ProteinMPNN not found. Either:\n"
-        "  1. Clone it:  git clone https://github.com/dauparas/ProteinMPNN.git\n"
-        "  2. Set PROTEINMPNN_DIR=/path/to/ProteinMPNN\n"
-        "The notebook's setup cell can do this automatically."
-    )
-
-if str(PMPNN_DIR) not in sys.path:
+if PMPNN_DIR is not None and str(PMPNN_DIR) not in sys.path:
     sys.path.insert(0, str(PMPNN_DIR))
 
 # Sequon pattern: N-X-S/T where X != P and X != X (unresolved residue)
@@ -69,7 +61,8 @@ def get_mpnn_chain_seqs_and_order(pdb_path):
     except ImportError:
         raise ImportError(
             f"Could not import protein_mpnn_utils. "
-            f"Ensure ProteinMPNN is at: {PMPNN_DIR}"
+            "Clone ProteinMPNN or set PROTEINMPNN_DIR before running "
+            "ProteinMPNN-indexed sequence extraction."
         )
 
     pdb_dict_list = parse_PDB(str(pdb_path))
