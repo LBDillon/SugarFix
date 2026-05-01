@@ -15,30 +15,57 @@
 # %% [markdown]
 # # Tutorial 01: Sequon Mapping & Validation
 #
+# [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LBDillon/SugarFix/blob/main/notebooks/01_sequon_mapping_validation.ipynb)
+#
 # **Research question:** Given a glycoprotein structure, where are all the
 # N-X-S/T sequons, and how confident are we that each is actually glycosylated?
 #
 # This tutorial combines motif detection, PDB-resolved glycan evidence,
 # UniProt glycosylation annotations, and numbering/remapping checks into one
-# site-confidence report.
+# site-confidence report. Logic lives in `pipeline/tutorial_workflows.py`;
+# this notebook only sets parameters and displays results.
+
+# %% [markdown]
+# ## Setup
+#
+# On Google Colab this cell clones the SugarFix repository, installs Python
+# dependencies, installs `mkdssp` (for confidence reports), and ensures
+# ProteinMPNN will be cloned on first use. Locally it is a no-op as long as
+# the notebook is launched from a SugarFix checkout.
 
 # %%
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+IN_COLAB = "google.colab" in sys.modules
+REPO_URL = "https://github.com/LBDillon/SugarFix.git"
+REPO_DIR_NAME = "SugarFix"
+
+if IN_COLAB:
+    if not Path(REPO_DIR_NAME).exists():
+        subprocess.run(
+            ["git", "clone", "--depth", "1", REPO_URL, REPO_DIR_NAME], check=True
+        )
+    os.chdir(REPO_DIR_NAME)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"],
+        check=True,
+    )
+    if shutil.which("mkdssp") is None and shutil.which("dssp") is None:
+        subprocess.run(["apt-get", "install", "-yqq", "dssp"], check=False)
+    os.environ.setdefault("SUGARFIX_AUTO_CLONE_PROTEINMPNN", "1")
+
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0, str(Path.cwd()))
 
 try:
     from IPython.display import display
 except Exception:
     def display(obj):
         print(obj)
-
-try:
-    _REPO_ROOT = Path(__file__).resolve().parents[1]
-except NameError:
-    _REPO_ROOT = Path.cwd()
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
 
 from pipeline.tutorial_workflows import (
     new_design_session,

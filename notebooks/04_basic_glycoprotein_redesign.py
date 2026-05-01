@@ -15,6 +15,8 @@
 # %% [markdown]
 # # Tutorial 04: Basic Glycoprotein Redesign
 #
+# [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/LBDillon/SugarFix/blob/main/notebooks/04_basic_glycoprotein_redesign.ipynb)
+#
 # **Research question:** Can we redesign a glycoprotein without disrupting its
 # existing glycosylation sites?
 #
@@ -23,11 +25,45 @@
 # standalone AlphaFold 3 JSON dialect so glycan ligands and covalent bonds can
 # be passed to the full AF3 codebase. Set `AF3_EXPORT_MODE = "alphafoldserver"`
 # when you specifically want server-compatible single-NAG glycan stubs.
+# Logic lives in `pipeline/tutorial_workflows.py`; this notebook only sets
+# parameters and displays results.
+
+# %% [markdown]
+# ## Setup
+#
+# On Google Colab this cell clones the SugarFix repository, installs Python
+# dependencies, installs `mkdssp` (for confidence reports), and ensures
+# ProteinMPNN will be cloned on first use. Locally it is a no-op as long as
+# the notebook is launched from a SugarFix checkout. ProteinMPNN runs faster
+# with a GPU runtime.
 
 # %%
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+IN_COLAB = "google.colab" in sys.modules
+REPO_URL = "https://github.com/LBDillon/SugarFix.git"
+REPO_DIR_NAME = "SugarFix"
+
+if IN_COLAB:
+    if not Path(REPO_DIR_NAME).exists():
+        subprocess.run(
+            ["git", "clone", "--depth", "1", REPO_URL, REPO_DIR_NAME], check=True
+        )
+    os.chdir(REPO_DIR_NAME)
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q", "-r", "requirements.txt"],
+        check=True,
+    )
+    if shutil.which("mkdssp") is None and shutil.which("dssp") is None:
+        subprocess.run(["apt-get", "install", "-yqq", "dssp"], check=False)
+    os.environ.setdefault("SUGARFIX_AUTO_CLONE_PROTEINMPNN", "1")
+
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0, str(Path.cwd()))
 
 try:
     from IPython.display import display
@@ -35,22 +71,14 @@ except Exception:
     def display(obj):
         print(obj)
 
-try:
-    _REPO_ROOT = Path(__file__).resolve().parents[1]
-except NameError:
-    _REPO_ROOT = Path.cwd()
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
 from pipeline.tutorial_workflows import (
     build_design_conditions,
     choose_preservation_strategy,
-    export_top_designs_for_af3,
     new_design_session,
     prepare_structure_for_tutorial,
     run_proteinmpnn_designs,
     run_sequon_mapping,
-    score_design_workflow,
+    score_and_export_designs,
     setup_tutorial_environment,
     write_design_outputs,
     write_tutorial01_outputs,
@@ -136,15 +164,11 @@ display(condition_manifest_df)
 # ## Score designs and export AF3 inputs
 
 # %%
-design = score_design_workflow(
+design = score_and_export_designs(
     session,
     constraints_by_condition=constraints,
     condition_manifest_df=condition_manifest_df,
-)
-design.af3_outputs = export_top_designs_for_af3(
-    session,
-    design.top_designs,
-    mode=AF3_EXPORT_MODE,
+    af3_export_mode=AF3_EXPORT_MODE,
     model_seeds=[SEED],
 )
 

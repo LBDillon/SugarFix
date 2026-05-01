@@ -547,6 +547,28 @@ def score_design_workflow(
     )
 
 
+def score_and_export_designs(
+    session,
+    constraints_by_condition: Optional[Dict[str, object]] = None,
+    condition_manifest_df: Optional[pd.DataFrame] = None,
+    af3_export_mode: str = "alphafold3",
+    model_seeds: Optional[List[int]] = None,
+) -> DesignWorkflowResult:
+    """Score ProteinMPNN FASTAs and export AF3 JSONs in one call."""
+    design = score_design_workflow(
+        session,
+        constraints_by_condition=constraints_by_condition,
+        condition_manifest_df=condition_manifest_df,
+    )
+    design.af3_outputs = export_top_designs_for_af3(
+        session,
+        design.top_designs,
+        mode=af3_export_mode,
+        model_seeds=model_seeds,
+    )
+    return design
+
+
 def export_top_designs_for_af3(
     session,
     top_designs: Dict[str, object],
